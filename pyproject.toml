@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hughie"
+version = "0.1.0"
+description = "Hughie - agente pessoal persistente"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "typer>=0.12,<1",
+    "rich>=13,<14",
+    "langgraph>=0.2,<1",
+    "langchain-core>=0.3,<1",
+    "google-genai>=1.0,<2",
+    "asyncpg>=0.29,<1",
+    "pgvector>=0.3,<1",
+    "pydantic-settings>=2.3,<3",
+    "python-dotenv>=1.0,<2",
+    "codex-bridge-sdk",
+]
+
+[project.scripts]
+hughie = "hughie.main:app"
+
+[tool.uv.sources]
+codex-bridge-sdk = { path = "/home/elian/projetos/pessoal/open-source/codex-bridge/sdk", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hughie"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
