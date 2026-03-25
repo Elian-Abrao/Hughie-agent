@@ -9,6 +9,7 @@ Two trigger modes:
 import asyncio
 import json
 import logging
+import re
 
 from google import genai
 from google.genai import types as genai_types
@@ -19,6 +20,38 @@ from hughie.memory.database import get_pool
 from hughie.memory.file_reader import collect_file_contents
 
 logger = logging.getLogger(__name__)
+
+_RETRY_DELAY_RE = re.compile(r"retry[^\d]*(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
+_MAX_RETRIES = 2
+
+
+def _parse_retry_delay(exc: Exception) -> float:
+    """Extract suggested retry delay in seconds from a 429 error message."""
+    msg = str(exc)
+    m = _RETRY_DELAY_RE.search(msg)
+    if m:
+        return min(float(m.group(1)), 120.0)
+    return 60.0
+
+
+async def _call_with_retry(fn, *args, **kwargs):
+    """Call an async callable, retrying up to _MAX_RETRIES times on 429."""
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            return await fn(*args, **kwargs)
+        except Exception as exc:
+            if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
+                if attempt < _MAX_RETRIES:
+                    delay = _parse_retry_delay(exc)
+                    logger.warning(
+                        "Consolidation 429 rate limit — retrying in %.0fs (attempt %d/%d)",
+                        delay, attempt + 1, _MAX_RETRIES,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                logger.warning("Consolidation skipped: rate limit exceeded (quota exhausted)")
+                return None
+            raise
 
 
 def _flash_client() -> genai.Client:
@@ -108,18 +141,20 @@ async def _extract_memories(
         f"{file_section}"
     )
 
-    response = client.models.generate_content(
-        model=settings.flash_model,
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
-
-    try:
+    async def _call():
+        response = client.models.generate_content(
+            model=settings.flash_model,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
         return json.loads(response.text)
-    except Exception:
+
+    result = await _call_with_retry(_call)
+    if result is None:
         return []
+    return result if isinstance(result, list) else []
 
 
 async def _merge_or_rewrite(existing_content: str, new_info: str) -> str:
@@ -135,11 +170,18 @@ async def _merge_or_rewrite(existing_content: str, new_info: str) -> str:
         "Responda APENAS com o novo conteúdo da nota, sem explicações."
     )
 
-    response = client.models.generate_content(
-        model=settings.flash_model,
-        contents=prompt,
-    )
-    return response.text.strip()
+    async def _call():
+        response = client.models.generate_content(
+            model=settings.flash_model,
+            contents=prompt,
+        )
+        return response.text.strip()
+
+    result = await _call_with_retry(_call)
+    # If rate-limited, fall back to appending new info
+    if result is None:
+        return f"{existing_content}\n\n{new_info}"
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -12,10 +12,16 @@ from hughie.tools.brain_tools import BRAIN_TOOLS
 _llm: CodexChatModel | None = None
 
 
-def _get_llm() -> CodexChatModel:
+def init_llm(tools: list) -> None:
+    """Initialize the LLM with the full tool list. Call once at startup."""
     global _llm
+    _llm = CodexChatModel().bind_tools(tools)
+
+
+def _get_llm() -> CodexChatModel:
     if _llm is None:
-        _llm = CodexChatModel().bind_tools(BRAIN_TOOLS)
+        # Fallback: brain tools only (before registry is loaded)
+        return CodexChatModel().bind_tools(BRAIN_TOOLS)
     return _llm
 
 

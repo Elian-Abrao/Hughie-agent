@@ -18,11 +18,15 @@ console = Console()
 async def _chat_session(session_id: str, no_stream: bool) -> None:
     from langchain_core.messages import AIMessageChunk, AIMessage, HumanMessage
     from hughie.core.graph import build_graph
+    from hughie.core.nodes import init_llm
     from hughie.memory.database import run_migrations, close_pool
+    from hughie.tools.mcp_loader import close_mcp_client
+    from hughie.tools.registry import load_all_tools
 
     await run_migrations()
-
-    graph = build_graph()
+    tools = await load_all_tools()
+    init_llm(tools)
+    graph = build_graph(tools)
 
     if session_id:
         console.print(f"[dim]Sessão: {session_id}[/dim]")
@@ -76,6 +80,7 @@ async def _chat_session(session_id: str, no_stream: bool) -> None:
 
             console.print()
     finally:
+        await close_mcp_client()
         await close_pool()
 
 
