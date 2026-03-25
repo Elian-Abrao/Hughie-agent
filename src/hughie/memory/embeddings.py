@@ -19,6 +19,8 @@ def _get_client() -> genai.Client:
 
 def embed_query(text: str) -> list[float]:
     """Embed a query string (for search)."""
+    if not text or not text.strip():
+        return [0.0] * EMBEDDING_DIM
     client = _get_client()
     result = client.models.embed_content(
         model=EMBEDDING_MODEL,
@@ -33,6 +35,8 @@ def embed_query(text: str) -> list[float]:
 
 def embed_document(text: str) -> list[float]:
     """Embed a document string (for storage)."""
+    if not text or not text.strip():
+        return [0.0] * EMBEDDING_DIM
     client = _get_client()
     result = client.models.embed_content(
         model=EMBEDDING_MODEL,

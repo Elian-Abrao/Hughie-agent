@@ -44,7 +44,7 @@ def _to_sdk_messages(messages: list[BaseMessage]) -> list[dict]:
             result.append({
                 "role": "tool_result",
                 "call_id": msg.tool_call_id,
-                "content": str(msg.content),
+                "output": str(msg.content),
             })
     return result
 
@@ -180,26 +180,10 @@ class CodexChatModel(BaseChatModel):
 
             elif kind == "tool_call_done":
                 call_id = event.get("callId", "")
-                if call_id in active_tool_calls:
-                    tc = active_tool_calls.pop(call_id)
-                    try:
-                        args = json.loads(tc["args_buf"] or "{}")
-                    except json.JSONDecodeError:
-                        args = {}
-                    chunk = ChatGenerationChunk(
-                        message=AIMessageChunk(
-                            content="",
-                            tool_call_chunks=[
-                                ToolCallChunk(
-                                    id=call_id,
-                                    name=tc["name"],
-                                    args=json.dumps(args),
-                                    index=tool_call_index.get(call_id, 0),
-                                )
-                            ],
-                        )
-                    )
-                    yield chunk
+                # Just clean up — args were already streamed via tool_call_delta events.
+                # Yielding here would duplicate name/id, causing LangChain to concatenate
+                # them and produce invalid tool names like "list_dirlist_dir".
+                active_tool_calls.pop(call_id, None)
 
     @property
     def _llm_type(self) -> str:
