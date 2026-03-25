@@ -1,0 +1,3 @@
+[submodule "providers/llm-broker"]
+	path = providers/llm-broker
+	url = https://github.com/Elian-Abrao/llm-broker.git
