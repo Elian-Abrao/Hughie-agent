@@ -5,8 +5,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from hughie.config import get_settings
 from hughie.core.state import HughieState
 from hughie.llm.codex_chat_model import CodexChatModel
-from hughie.memory import brain_store, conversation_store, link_store
+from hughie.memory import conversation_store
 from hughie.memory.consolidator import maybe_consolidate
+from hughie.memory.rag import retrieve_context_v2
 from hughie.tools.brain_tools import BRAIN_TOOLS
 
 _llm: CodexChatModel | None = None
@@ -26,51 +27,19 @@ def _get_llm() -> CodexChatModel:
 
 
 async def retrieve_context(state: HughieState) -> dict:
-    """Load brain notes and conversation history from DB."""
+    """Load ranked RAG context and conversation history from DB."""
     session_id = state["session_id"]
 
-    # Last user message for semantic search
     user_text = ""
     for msg in reversed(state["messages"]):
         if isinstance(msg, HumanMessage):
             user_text = str(msg.content)
             break
 
-    # Brain notes semantic search
-    notes = await brain_store.search_notes(user_text, limit=5) if user_text else []
-    brain_context = ""
-    if notes:
-        lines = [f"- [{n.type}] {n.title}: {n.content}" for n in notes]
+    task_context = "\n".join(str(msg.content) for msg in state["messages"] if getattr(msg, "content", ""))
+    rag_payload = await retrieve_context_v2(query=user_text, task_context=task_context, top_k=10) if user_text else {"context": ""}
+    brain_context = rag_payload["context"]
 
-        links = await link_store.get_links_for_notes([n.id for n in notes], limit=12)
-        connected_note_lines: list[str] = []
-        path_lines: list[str] = []
-        seen_note_ids = {n.id for n in notes}
-        seen_path_targets: set[str] = set()
-
-        for link in links:
-            source_title = link.source_note_title or "nota relacionada"
-            if link.target_kind == "note" and link.target_note_id and link.target_note_id not in seen_note_ids:
-                seen_note_ids.add(link.target_note_id)
-                if link.target_note_title and link.target_note_content:
-                    connected_note_lines.append(
-                        f"- ({link.relation_type} de {source_title}) "
-                        f"[{link.target_note_type or 'fact'}] {link.target_note_title}: {link.target_note_content}"
-                    )
-            elif link.target_kind in {"file", "directory"} and link.target_path and link.target_path not in seen_path_targets:
-                seen_path_targets.add(link.target_path)
-                path_lines.append(
-                    f"- ({link.relation_type} de {source_title}) [{link.target_kind}] {link.target_path}"
-                )
-
-        sections = ["O que você sabe sobre o usuário e o projeto:\n" + "\n".join(lines)]
-        if connected_note_lines:
-            sections.append("Notas conectadas:\n" + "\n".join(connected_note_lines))
-        if path_lines:
-            sections.append("Arquivos e diretórios relacionados:\n" + "\n".join(path_lines))
-        brain_context = "\n\n".join(sections)
-
-    # Load conversation history from DB as ordered list
     turns = await conversation_store.get_recent(session_id, limit=20)
     history = []
     for turn in turns:
