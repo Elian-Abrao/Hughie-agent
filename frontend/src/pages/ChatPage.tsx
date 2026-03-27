@@ -1,36 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
-import {
-  streamChat,
-  fetchSessions,
-  fetchSessionMessages,
-  checkHealth,
-} from "../api/client";
+import { streamChat, fetchSessions, fetchSessionMessages, checkHealth } from "../api/client";
 import type { Session } from "../api/client";
 import { MarkdownContent } from "../components/MarkdownContent";
+import { useChatStore } from "../store/chatStore";
+import type { Message } from "../store/chatStore";
+import { IconPlus, IconSend } from "../components/Icons";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  tools: string[];
-  streaming: boolean;
-  error: boolean;
-}
+function uid() { return Math.random().toString(36).slice(2, 10); }
 
-type Status = "online" | "typing" | "offline";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function uid() {
-  return Math.random().toString(36).slice(2);
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60_000);
+function reltime(iso: string) {
+  const d = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(d / 60_000);
   if (m < 1) return "agora";
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
@@ -38,29 +21,27 @@ function relativeTime(iso: string): string {
   return `${Math.floor(h / 24)}d`;
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+type Status = "online" | "typing" | "offline";
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
+  const { sessionId, messages, setSessionId, setMessages, appendMessages, updateMessage, reset } =
+    useChatStore();
+
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [sessionId, setSessionId] = useState("");
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState<Status>("offline");
 
   const sessionIdRef = useRef(sessionId);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Keep ref in sync with state (needed inside async generator)
-  useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
 
-  const loadSessions = useCallback(async () => {
-    setSessions(await fetchSessions());
-  }, []);
+  const loadSessions = useCallback(async () => setSessions(await fetchSessions()), []);
 
   useEffect(() => {
     loadSessions();
@@ -73,7 +54,7 @@ export default function ChatPage() {
   }, [loadSessions]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const openSession = useCallback(async (id: string) => {
@@ -89,133 +70,101 @@ export default function ChatPage() {
         error: false,
       }))
     );
-  }, []);
+  }, [setSessionId, setMessages]);
 
   const newSession = useCallback(() => {
     abortRef.current?.abort();
-    setSessionId("");
+    reset();
     sessionIdRef.current = "";
-    setMessages([]);
     setInput("");
     textareaRef.current?.focus();
-  }, []);
+  }, [reset]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = Math.min(e.target.scrollHeight, 180) + "px";
+  const autoResize = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
   };
 
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || isStreaming) return;
+    if (!text || streaming) return;
 
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
+    if (textareaRef.current) { textareaRef.current.style.height = "auto"; }
 
     const assistantId = uid();
-
-    setMessages((prev) => [
-      ...prev,
-      { id: uid(), role: "user", content: text, tools: [], streaming: false, error: false },
-      { id: assistantId, role: "assistant", content: "", tools: [], streaming: true, error: false },
+    appendMessages([
+      { id: uid(), role: "user",      content: text, tools: [], streaming: false, error: false },
+      { id: assistantId, role: "assistant", content: "", tools: [], streaming: true,  error: false },
     ]);
-    setIsStreaming(true);
+    setStreaming(true);
     setStatus("typing");
 
-    const abort = new AbortController();
-    abortRef.current = abort;
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
 
     try {
-      for await (const ev of streamChat(text, sessionIdRef.current, abort.signal)) {
+      for await (const ev of streamChat(text, sessionIdRef.current, ctrl.signal)) {
         if (ev.event === "session" && !sessionIdRef.current) {
           sessionIdRef.current = ev.data.session_id;
           setSessionId(ev.data.session_id);
         } else if (ev.event === "text") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + ev.data.text } : m
-            )
-          );
+          updateMessage(assistantId, (m) => ({ ...m, content: m.content + ev.data.text }));
         } else if (ev.event === "tool") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId ? { ...m, tools: [...m.tools, ev.data.tool] } : m
-            )
-          );
+          updateMessage(assistantId, (m) => ({ ...m, tools: [...m.tools, ev.data.tool] }));
         } else if (ev.event === "error") {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, content: `Erro: ${ev.data.error}`, streaming: false, error: true }
-                : m
-            )
-          );
+          updateMessage(assistantId, (m) => ({ ...m, content: `Erro: ${ev.data.error}`, streaming: false, error: true }));
           break;
         }
       }
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...m, content: "Falha na conexão.", streaming: false, error: true }
-              : m
-          )
-        );
+        updateMessage(assistantId, (m) => ({ ...m, content: "Falha na conexão.", streaming: false, error: true }));
       }
     }
 
-    setMessages((prev) =>
-      prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
-    );
-    setIsStreaming(false);
+    updateMessage(assistantId, (m) => ({ ...m, streaming: false }));
+    setStreaming(false);
     setStatus("online");
     loadSessions();
     textareaRef.current?.focus();
-  }, [input, isStreaming, loadSessions]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
+  }, [input, streaming, appendMessages, updateMessage, setSessionId, loadSessions]);
 
   return (
     <div className="flex h-full">
       {/* ── Sessions sidebar ── */}
-      <div className="w-52 flex-shrink-0 border-r border-border bg-surface flex flex-col">
+      <div className="w-[188px] flex-shrink-0 border-r border-border bg-surface flex flex-col">
         <div className="p-2 border-b border-border">
           <button
             onClick={newSession}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted hover:text-[#e8e8e8] hover:bg-surface2 rounded-md transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted hover:text-[#d8d8f0] hover:bg-surface2 transition-colors"
           >
-            <span className="text-accent text-base leading-none">+</span>
-            Nova sessão
+            <IconPlus size={14} />
+            <span>Nova sessão</span>
           </button>
         </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+        <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
           {sessions.length === 0 && (
-            <p className="text-xs text-muted px-3 pt-3">Nenhuma sessão</p>
+            <p className="text-xs text-muted px-3 pt-3">Sem histórico</p>
           )}
           {sessions.map((s) => (
             <button
               key={s.session_id}
               onClick={() => openSession(s.session_id)}
               className={clsx(
-                "w-full text-left px-3 py-2 rounded-md transition-colors",
+                "w-full text-left px-3 py-2.5 rounded-lg transition-colors group",
                 s.session_id === sessionId
-                  ? "bg-accent-dim text-[#e8e8e8]"
-                  : "hover:bg-surface2 text-muted hover:text-[#e8e8e8]"
+                  ? "bg-accent-dim border border-[#3a308a]"
+                  : "hover:bg-surface2"
               )}
             >
-              <div className="flex items-center justify-between gap-1">
-                <span className="text-xs font-mono truncate">{s.session_id.slice(0, 12)}</span>
-                <span className="text-[10px] text-muted flex-shrink-0">{relativeTime(s.last_at)}</span>
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <span className={clsx("text-xs font-mono truncate", s.session_id === sessionId ? "text-accent" : "text-muted-2")}>
+                  {s.session_id.slice(0, 11)}
+                </span>
+                <span className="text-[10px] text-muted flex-shrink-0">{reltime(s.last_at)}</span>
               </div>
-              <p className="text-xs text-muted mt-0.5 truncate leading-tight">{s.last_message}</p>
+              <p className="text-[11px] text-muted truncate leading-tight">{s.last_message}</p>
             </button>
           ))}
         </div>
@@ -223,65 +172,67 @@ export default function ChatPage() {
 
       {/* ── Chat area ── */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="h-13 flex items-center justify-between px-5 border-b border-border flex-shrink-0">
+        {/* Header bar */}
+        <div className="h-12 flex items-center justify-between px-5 border-b border-border flex-shrink-0 bg-surface/60 backdrop-blur-sm">
           <span className="text-xs font-mono text-muted">
-            {sessionId ? `sess: ${sessionId.slice(0, 16)}` : "nova sessão"}
+            {sessionId ? `sess: ${sessionId.slice(0, 18)}` : "nova sessão"}
           </span>
-          <StatusDot status={status} />
+          <div className="flex items-center gap-2">
+            <span className={clsx("text-xs", status === "typing" ? "text-accent" : status === "online" ? "text-green-400" : "text-muted")}>
+              {status === "typing" ? "pensando…" : status === "online" ? "online" : "offline"}
+            </span>
+            <div className={clsx("w-1.5 h-1.5 rounded-full", {
+              "bg-green-400": status === "online",
+              "bg-accent animate-pulse": status === "typing",
+              "bg-muted": status === "offline",
+            })} />
+          </div>
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto py-6">
+        <div className="flex-1 overflow-y-auto py-8">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4">
-              <div className="text-5xl mb-4">🤖</div>
-              <p className="text-[#e8e8e8] font-semibold mb-1">Olá, eu sou o Hughie</p>
-              <p className="text-muted text-sm max-w-xs leading-relaxed">
-                Seu agente pessoal persistente. Como posso ajudar?
-              </p>
-            </div>
+            <EmptyState />
           ) : (
-            <div className="max-w-3xl mx-auto px-4 space-y-5">
-              {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
-              <div ref={messagesEndRef} />
+            <div className="max-w-2xl mx-auto px-5 space-y-6">
+              {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
+              <div ref={endRef} />
             </div>
           )}
         </div>
 
         {/* Input */}
-        <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
-          <div className="max-w-3xl mx-auto flex gap-3 items-end">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Mensagem… (Enter envia, Shift+Enter nova linha)"
-              rows={1}
-              disabled={isStreaming}
-              className="flex-1 bg-surface2 border border-border rounded-xl text-sm text-[#e8e8e8] placeholder-muted resize-none outline-none px-4 py-3 leading-relaxed focus:border-accent transition-colors min-h-[46px] max-h-[180px] disabled:opacity-50"
-            />
+        <div className="px-5 pb-5 pt-3 flex-shrink-0 border-t border-border/50 bg-surface/40 backdrop-blur-sm">
+          <div className="max-w-2xl mx-auto flex gap-3 items-end">
+            <div className="flex-1 relative">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                rows={1}
+                disabled={streaming}
+                onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                placeholder="Mensagem… (Shift+Enter para nova linha)"
+                className={clsx(
+                  "w-full bg-surface2 border rounded-xl text-sm text-[#d8d8f0] placeholder-muted",
+                  "resize-none outline-none px-4 py-3 leading-relaxed transition-all",
+                  "min-h-[46px] max-h-[200px] font-sans",
+                  streaming ? "opacity-60 cursor-not-allowed border-border" : "border-border focus:border-accent focus:ring-1 focus:ring-accent/30"
+                )}
+              />
+            </div>
             <button
               onClick={send}
-              disabled={isStreaming || !input.trim()}
-              className="w-11 h-11 rounded-xl bg-accent flex items-center justify-center flex-shrink-0 transition-opacity hover:opacity-85 disabled:opacity-30 disabled:cursor-not-allowed"
-              aria-label="Enviar"
+              disabled={streaming || !input.trim()}
+              className={clsx(
+                "w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0",
+                "transition-all duration-150",
+                streaming || !input.trim()
+                  ? "bg-surface2 border border-border text-muted cursor-not-allowed"
+                  : "bg-accent hover:bg-accent-h text-white shadow-[0_0_12px_rgba(124,106,247,0.4)] hover:shadow-[0_0_18px_rgba(124,106,247,0.6)]"
+              )}
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-4 h-4 text-white"
-              >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
+              <IconSend size={15} />
             </button>
           </div>
         </div>
@@ -292,72 +243,71 @@ export default function ChatPage() {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: Status }) {
+function EmptyState() {
   return (
-    <div
-      className={clsx("w-2 h-2 rounded-full transition-colors", {
-        "bg-green-500": status === "online",
-        "bg-accent animate-pulse": status === "typing",
-        "bg-muted": status === "offline",
-      })}
-    />
+    <div className="flex flex-col items-center justify-center h-full text-center px-8 animate-fadein">
+      <div className="w-16 h-16 rounded-2xl bg-accent-dim border border-[#3a308a] flex items-center justify-center mb-5 shadow-[0_0_24px_rgba(124,106,247,0.2)]">
+        <span className="text-2xl">🤖</span>
+      </div>
+      <h2 className="text-[#d8d8f0] font-semibold text-base mb-1.5">Olá, sou o Hughie</h2>
+      <p className="text-muted text-sm max-w-xs leading-relaxed">
+        Seu agente pessoal persistente. Tenho memória e posso acessar seus ambientes remotamente.
+      </p>
+    </div>
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.role === "user";
+function MessageBubble({ msg }: { msg: Message }) {
+  const isUser = msg.role === "user";
 
   return (
-    <div className={clsx("flex gap-3", isUser && "flex-row-reverse")}>
+    <div className={clsx("flex gap-3 animate-fadein", isUser && "flex-row-reverse")}>
       {/* Avatar */}
-      <div
-        className={clsx(
-          "w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-sm font-bold mt-0.5",
-          isUser ? "bg-user-border text-green-400" : "bg-accent-dim text-accent"
-        )}
-      >
+      <div className={clsx(
+        "w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5",
+        isUser
+          ? "bg-[#1a3520] text-green-400 border border-[#253525]"
+          : "bg-accent-dim text-accent border border-[#3a308a]"
+      )}>
         {isUser ? "E" : "H"}
       </div>
 
-      {/* Content block */}
-      <div className={clsx("flex flex-col gap-1.5 max-w-[78%]", isUser && "items-end")}>
-        {/* Tool badges */}
-        {message.tools.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {message.tools.map((tool, i) => (
-              <span
-                key={i}
-                className="text-xs bg-tool-bg text-tool-text border border-[#2a2a4a] rounded-md px-2 py-0.5 font-mono"
-              >
-                ⚙ {tool}
+      {/* Content */}
+      <div className={clsx("flex flex-col gap-2 min-w-0", isUser ? "items-end max-w-[80%]" : "flex-1")}>
+        {/* Tool calls */}
+        {msg.tools.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {msg.tools.map((t, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 text-[11px] bg-tool-bg text-tool-text border border-[#2a2a50] rounded-full px-2.5 py-0.5 font-mono">
+                <span className="opacity-60">⚙</span> {t}
               </span>
             ))}
           </div>
         )}
 
         {/* Bubble */}
-        <div
-          className={clsx(
-            "px-4 py-3 rounded-2xl text-sm leading-relaxed",
-            isUser
-              ? "bg-user-bg border border-user-border rounded-tr-sm text-[#e8e8e8]"
-              : clsx(
-                  "bg-surface2 border rounded-tl-sm",
-                  message.error ? "border-red-800 text-red-400" : "border-border"
-                )
-          )}
-        >
+        <div className={clsx(
+          "rounded-2xl text-sm leading-relaxed",
+          isUser
+            ? "bg-user-bg border border-user-border rounded-tr-sm px-4 py-3 text-[#d8d8f0]"
+            : clsx(
+                "px-4 py-3 rounded-tl-sm w-full",
+                msg.error
+                  ? "bg-red-950/40 border border-red-900/50 text-red-300"
+                  : "bg-surface2 border border-border/80"
+              )
+        )}>
           {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
           ) : (
             <>
-              {message.content ? (
-                <MarkdownContent content={message.content} />
-              ) : message.streaming ? (
-                <span className="text-muted text-xs italic">pensando…</span>
-              ) : null}
-              {message.streaming && message.content && (
-                <span className="inline-block w-0.5 h-[1em] bg-accent ml-0.5 animate-blink align-middle" />
+              {msg.content
+                ? <MarkdownContent content={msg.content} />
+                : msg.streaming
+                  ? <span className="text-muted text-xs italic">pensando…</span>
+                  : null}
+              {msg.streaming && msg.content && (
+                <span className="inline-block w-0.5 h-[0.9em] bg-accent ml-0.5 animate-blink align-middle rounded-sm" />
               )}
             </>
           )}

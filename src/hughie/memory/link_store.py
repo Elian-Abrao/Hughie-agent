@@ -138,6 +138,39 @@ async def get_backlinks_for_notes(target_note_ids: list[str], limit: int = 20) -
     return [_link_from_row(row) for row in rows]
 
 
+async def list_all_links(limit: int = 1000) -> list[BrainLink]:
+    """Get all links for graph visualization."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                l.id,
+                l.source_note_id,
+                s.title AS source_note_title,
+                l.target_kind,
+                l.target_note_id,
+                t.title AS target_note_title,
+                t.content AS target_note_content,
+                t.type AS target_note_type,
+                l.target_path,
+                l.relation_type,
+                l.weight,
+                l.evidence,
+                l.created_by,
+                l.created_at,
+                l.updated_at
+            FROM brain_links l
+            JOIN brain_notes s ON s.id = l.source_note_id
+            LEFT JOIN brain_notes t ON t.id = l.target_note_id
+            ORDER BY l.weight DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+    return [_link_from_row(row) for row in rows]
+
+
 async def get_links_for_notes(source_note_ids: list[str], limit: int = 12) -> list[BrainLink]:
     if not source_note_ids:
         return []

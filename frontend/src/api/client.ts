@@ -118,3 +118,31 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+
+// ── Brain graph ───────────────────────────────────────────────────────────────
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  type: string;
+  importance: number;
+  status: string;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  weight: number;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export async function fetchBrainGraph(): Promise<GraphData> {
+  const res = await fetch(`${BASE}/v1/brain/graph`);
+  if (!res.ok) return { nodes: [], edges: [] };
+  return res.json();
+}

@@ -25,7 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 from hughie.core.graph import build_graph
 from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
-from hughie.memory import brain_store, conversation_store
+from hughie.memory import brain_store, conversation_store, link_store
 from hughie.memory.database import close_pool, run_migrations
 from hughie.tools.mcp_loader import close_mcp_client
 from hughie.tools.registry import load_all_tools
@@ -165,6 +165,43 @@ async def search_notes(q: str = Query(...), limit: int = Query(5)):
         }
         for n in notes
     ]
+
+
+@app.get("/v1/brain/graph")
+async def brain_graph():
+    notes = await brain_store.list_notes(limit=500)
+    links = await link_store.list_all_links(limit=2000)
+    nodes = [
+        {
+            "id": n.id,
+            "label": n.title,
+            "type": n.type or "fact",
+            "importance": n.importance,
+            "status": n.status,
+        }
+        for n in notes
+    ]
+    edges = []
+    for lnk in links:
+        if lnk.target_kind == "note" and lnk.target_note_id:
+            edges.append({
+                "source": lnk.source_note_id,
+                "target": lnk.target_note_id,
+                "relation": lnk.relation_type,
+                "weight": lnk.weight,
+            })
+        elif lnk.target_kind in {"file", "directory"} and lnk.target_path:
+            path_id = f"path:{lnk.target_path}"
+            if not any(n["id"] == path_id for n in nodes):
+                name = lnk.target_path.split("/")[-1] or lnk.target_path
+                nodes.append({"id": path_id, "label": name, "type": lnk.target_kind, "importance": 0.5, "status": "active"})
+            edges.append({
+                "source": lnk.source_note_id,
+                "target": path_id,
+                "relation": lnk.relation_type,
+                "weight": lnk.weight,
+            })
+    return {"nodes": nodes, "edges": edges}
 
 
 @app.get("/v1/sessions")
