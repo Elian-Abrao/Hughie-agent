@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { fetchBrainGraph, fetchNote } from "../api/client";
 import type { GraphData, GraphNode, BrainNote } from "../api/client";
@@ -38,19 +38,28 @@ export default function GraphPage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [minConfidence, setMinConfidence] = useState(0);
 
-  const filteredNodes = (graphData?.nodes ?? []).filter((node) => {
-    if (typeFilter && node.type !== typeFilter) return false;
-    if (sourceFilter && node.fonte !== sourceFilter) return false;
-    if ((node.confianca ?? 0) < minConfidence) return false;
-    return true;
-  });
-  const allowedNodeIds = new Set(filteredNodes.map((node) => node.id));
-  const filteredEdges = (graphData?.edges ?? []).filter(
-    (edge) => allowedNodeIds.has(edge.source) && allowedNodeIds.has(edge.target),
+  const filteredGraphData = useMemo(() => {
+    const nodes = (graphData?.nodes ?? []).filter((node) => {
+      if (typeFilter && node.type !== typeFilter) return false;
+      if (sourceFilter && node.fonte !== sourceFilter) return false;
+      if ((node.confianca ?? 0) < minConfidence) return false;
+      return true;
+    });
+    const allowedNodeIds = new Set(nodes.map((node) => node.id));
+    const edges = (graphData?.edges ?? []).filter(
+      (edge) => allowedNodeIds.has(edge.source) && allowedNodeIds.has(edge.target),
+    );
+    return { nodes, edges };
+  }, [graphData, minConfidence, sourceFilter, typeFilter]);
+
+  const availableTypes = useMemo(
+    () => Array.from(new Set((graphData?.nodes ?? []).map((node) => node.type))).sort(),
+    [graphData],
   );
-  const filteredGraphData = { nodes: filteredNodes, edges: filteredEdges };
-  const availableTypes = Array.from(new Set((graphData?.nodes ?? []).map((node) => node.type))).sort();
-  const availableSources = Array.from(new Set((graphData?.nodes ?? []).map((node) => node.fonte))).sort();
+  const availableSources = useMemo(
+    () => Array.from(new Set((graphData?.nodes ?? []).map((node) => node.fonte))).sort(),
+    [graphData],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
