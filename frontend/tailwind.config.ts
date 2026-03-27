@@ -18,6 +18,13 @@ export default {
         "tool-bg": "#1a1a2e",
         "tool-text": "#8888cc",
       },
+      animation: {
+        blink: "blink 0.8s step-start infinite",
+        spin: "spin 0.7s linear infinite",
+      },
+      keyframes: {
+        blink: { "50%": { opacity: "0" } },
+      },
       fontFamily: {
         sans: [
           "-apple-system",
