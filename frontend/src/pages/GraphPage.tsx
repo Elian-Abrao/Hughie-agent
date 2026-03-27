@@ -74,7 +74,7 @@ export default function GraphPage() {
           ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
-          ctx.strokeStyle = "rgba(255,255,255,0.18)";
+          ctx.strokeStyle = "rgba(120,100,80,0.28)";
           ctx.lineWidth = 1;
           ctx.stroke();
         })
@@ -111,7 +111,7 @@ export default function GraphPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="h-12 flex items-center justify-between px-5 border-b border-border flex-shrink-0 bg-surface/60 backdrop-blur-sm">
+      <div className="h-12 flex items-center justify-between px-5 border-b border-border flex-shrink-0 bg-surface">
         <div className="flex items-center gap-3">
           <div>
             <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Grafo</span>
@@ -164,7 +164,7 @@ export default function GraphPage() {
 
         {/* Selected node */}
         {selected && (
-          <div className="absolute top-4 right-4 w-60 bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-4 shadow-xl animate-fadein">
+          <div className="absolute top-4 right-4 w-60 bg-surface border border-border rounded-xl p-4 animate-fadein">
             <div className="flex items-start justify-between gap-2 mb-3">
               <h3 className="text-sm font-semibold text-strong leading-snug">{selected.label}</h3>
               <button

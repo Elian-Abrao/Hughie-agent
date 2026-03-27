@@ -89,7 +89,7 @@ export default function App() {
     <div className="flex h-full overflow-hidden bg-bg text-text">
       <aside
         className={clsx(
-          "flex shrink-0 flex-col border-r border-border bg-gradient-to-b from-surface via-surface to-bg transition-all duration-200 ease-in-out",
+          "flex shrink-0 flex-col border-r border-border bg-surface transition-all duration-200 ease-in-out",
           collapsed ? "w-16" : "w-[280px]"
         )}
       >
@@ -117,7 +117,7 @@ export default function App() {
           <div className="px-3 pt-3">
             <button
               onClick={newSession}
-              className="flex w-full items-center gap-2 rounded-xl bg-accent px-3 py-2.5 text-sm text-white shadow-[0_10px_30px_rgba(245,123,32,0.18)] transition-all hover:-translate-y-[1px] hover:bg-accent-h"
+              className="flex w-full items-center gap-2 rounded-xl border border-accent bg-accent px-3 py-2.5 text-sm text-white transition-colors hover:bg-accent-h"
             >
               <IconPlus size={14} />
               <span>Nova sessão</span>
@@ -177,7 +177,7 @@ export default function App() {
                         className={clsx(
                           "w-full rounded-xl px-3 py-2.5 text-left transition-all",
                           active
-                            ? "border border-accent/25 bg-accent-dim shadow-[inset_0_0_0_1px_rgba(245,123,32,0.08)]"
+                            ? "border border-accent/25 bg-accent-dim"
                             : "hover:bg-surface3/70"
                         )}
                       >

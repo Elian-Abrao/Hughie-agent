@@ -90,7 +90,7 @@ export default function ChatPage() {
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="h-12 flex items-center justify-between border-b border-border bg-surface/60 px-5 backdrop-blur-sm">
+        <div className="h-12 flex items-center justify-between border-b border-border bg-surface px-5">
           <div className="min-w-0">
             <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Chat</span>
             <span className="block truncate font-mono text-xs text-muted-2">
@@ -98,7 +98,7 @@ export default function ChatPage() {
             </span>
           </div>
           {streaming ? (
-            <span className="animate-pulse text-xs text-accent">pensando…</span>
+            <span className="text-xs text-accent">pensando…</span>
           ) : (
             <span className="text-xs text-muted">Hughie</span>
           )}
@@ -115,7 +115,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="border-t border-border/50 bg-surface/40 px-5 pb-5 pt-3 backdrop-blur-sm">
+        <div className="border-t border-border/50 bg-surface px-5 pb-5 pt-3">
           <div className="mx-auto flex max-w-2xl items-end gap-3">
             <div className="relative flex-1">
               <textarea
@@ -135,10 +135,10 @@ export default function ChatPage() {
                 }}
                 placeholder="Mensagem… (Shift+Enter para nova linha)"
                 className={clsx(
-                  "min-h-[46px] max-h-[200px] w-full resize-none rounded-2xl border bg-surface2 px-4 py-3 font-sans text-sm leading-relaxed text-text outline-none transition-all placeholder:text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
+                  "min-h-[46px] max-h-[200px] w-full resize-none rounded-2xl border bg-surface2 px-4 py-3 font-sans text-sm leading-relaxed text-text outline-none transition-all placeholder:text-muted",
                   streaming
                     ? "cursor-not-allowed border-border opacity-60"
-                    : "border-border focus:border-accent focus:ring-1 focus:ring-accent/30"
+                    : "border-border focus:border-accent"
                 )}
               />
             </div>
@@ -149,7 +149,7 @@ export default function ChatPage() {
                 "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all duration-150",
                 streaming || !input.trim()
                   ? "cursor-not-allowed border border-border bg-surface2 text-muted"
-                  : "bg-accent text-white shadow-[0_0_16px_rgba(245,123,32,0.28)] hover:-translate-y-[1px] hover:bg-accent-h hover:shadow-[0_0_22px_rgba(245,123,32,0.4)]"
+                  : "border border-accent bg-accent text-white hover:bg-accent-h"
               )}
             >
               <IconSend size={15} />
@@ -167,7 +167,7 @@ function EmptyState() {
       <img
         src="/Hughie.svg"
         alt="Hughie"
-        className="mb-2 h-52 w-52 object-contain drop-shadow-[0_0_32px_rgba(245,123,32,0.18)]"
+        className="mb-2 h-52 w-52 object-contain"
       />
       <h2 className="mb-1.5 text-base font-semibold text-strong">Olá, sou o Hughie</h2>
       <p className="max-w-xs text-sm leading-relaxed text-muted">

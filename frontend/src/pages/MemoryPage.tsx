@@ -52,7 +52,7 @@ export default function MemoryPage() {
       {/* ── List ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
-        <div className="px-6 py-4 border-b border-border bg-surface/60 backdrop-blur-sm flex-shrink-0 space-y-3">
+        <div className="px-6 py-4 border-b border-border bg-surface flex-shrink-0 space-y-3">
           <div>
             <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Memória</span>
             <span className="block text-sm font-medium text-text">Notas persistentes do Hughie</span>
@@ -66,7 +66,7 @@ export default function MemoryPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") runSearch(); if (e.key === "Escape") clearSearch(); }}
                 placeholder="Busca semântica…"
-                className="w-full bg-surface2 border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-text placeholder-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
+                className="w-full bg-surface2 border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-text placeholder-muted outline-none focus:border-accent transition-all"
               />
               {query && (
                 <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors">
@@ -76,7 +76,7 @@ export default function MemoryPage() {
             </div>
             <button
               onClick={runSearch}
-              className="px-4 py-2 bg-accent hover:bg-accent-h text-white rounded-lg text-sm font-medium transition-colors shadow-[0_0_12px_rgba(245,123,32,0.22)]"
+              className="px-4 py-2 bg-accent hover:bg-accent-h text-white rounded-lg text-sm font-medium transition-colors border border-accent"
             >
               Buscar
             </button>
@@ -93,7 +93,7 @@ export default function MemoryPage() {
                   onClick={() => handleTypeFilter(type)}
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all",
-                    active ? "bg-accent text-white border-accent shadow-[0_0_8px_rgba(245,123,32,0.3)]" : "border-border text-muted hover:text-text hover:border-border-2"
+                    active ? "bg-accent text-white border-accent" : "border-border text-muted hover:text-text hover:border-border-2"
                   )}
                 >
                   {type && <span className={clsx("w-1.5 h-1.5 rounded-full flex-shrink-0", meta.dot)} />}
@@ -138,7 +138,7 @@ export default function MemoryPage() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <div className="w-72 flex-shrink-0 border-l border-border bg-gradient-to-b from-surface to-bg flex flex-col animate-fadein">
+        <div className="w-72 flex-shrink-0 border-l border-border bg-surface flex flex-col animate-fadein">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <TypeBadge type={selected.type} />
             <button
@@ -173,8 +173,8 @@ function NoteCard({ note, selected, onClick }: { note: BrainNote; selected: bool
       className={clsx(
         "group text-left p-4 rounded-xl border transition-all duration-150 space-y-2.5",
         selected
-          ? "border-accent bg-accent-dim shadow-[0_0_0_1px_rgba(245,123,32,0.35),0_0_20px_rgba(245,123,32,0.12)]"
-          : "border-border bg-surface hover:border-border-2 hover:bg-surface2 hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
+          ? "border-accent bg-accent-dim"
+          : "border-border bg-surface hover:border-border-2 hover:bg-surface2"
       )}
     >
       <div className="flex items-start justify-between gap-2">
