@@ -11,7 +11,7 @@ COPY src/ ./src/
 COPY providers/ ./providers/
 
 RUN pip install --no-cache-dir ./providers/codex-bridge-sdk \
-    && pip install --no-cache-dir -e ".[serve]"
+    && pip install --no-cache-dir ".[serve]"
 
 EXPOSE 8000
 
