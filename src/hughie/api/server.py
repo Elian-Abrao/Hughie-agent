@@ -565,7 +565,7 @@ async def brain_graph():
                 "confianca": lnk.confianca,
                 "fonte": lnk.fonte,
                 "tipo_relacao": lnk.tipo_relacao or lnk.relation_type,
-                "criado_em": lnk.criado_em.isoformat() if lnk.criado_em else None,
+                "criado_em": lnk.created_em.isoformat() if lnk.created_em else None,
             })
         elif lnk.target_kind in {"file", "directory"} and lnk.target_path:
             path_id = f"path:{lnk.target_path}"
@@ -590,7 +590,7 @@ async def brain_graph():
                 "confianca": lnk.confianca,
                 "fonte": lnk.fonte,
                 "tipo_relacao": lnk.tipo_relacao or lnk.relation_type,
-                "criado_em": lnk.criado_em.isoformat() if lnk.criado_em else None,
+                "criado_em": lnk.created_em.isoformat() if lnk.created_em else None,
             })
     return {"nodes": nodes, "edges": edges}
 
