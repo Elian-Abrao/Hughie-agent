@@ -31,6 +31,7 @@ from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
 from hughie.memory import brain_store, conversation_store, link_store
 from hughie.memory.database import close_pool, run_migrations
+from hughie.scheduler import start_scheduler, stop_scheduler
 from hughie.tools.mcp_loader import close_mcp_client
 from hughie.tools.registry import load_all_tools
 
@@ -49,8 +50,10 @@ async def lifespan(app: FastAPI):
     tools = await load_all_tools()
     init_llm(tools)
     _graph = build_graph(tools)
+    start_scheduler()
     logger.info("Hughie API pronta.")
     yield
+    await stop_scheduler()
     await close_mcp_client()
     await close_pool()
     logger.info("Hughie API encerrada.")

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     consolidation_api_fallback_model: str = "gemini-2.0-flash"
     consolidation_batch_size: int = 10
     consolidation_context_turns: int = 3
+    maintenance_interval_seconds: int = 86400
 
     local_machine_host: str = "tree-dev"
     local_machine_path_prefixes: list[str] = ["/home/elian/", "/dados/"]

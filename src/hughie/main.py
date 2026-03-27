@@ -184,6 +184,19 @@ def brain_consolidate(
     console.print(f"[green]Consolidação concluída. {count} nota(s) atualizadas.[/green]")
 
 
+@brain_app.command("maintain")
+def brain_maintain():
+    """Executar manutenção do grafo e memória."""
+    from hughie.memory.maintenance import run_all
+
+    console.print("[dim]Executando manutenção do grafo...[/dim]")
+    result = asyncio.run(run_all())
+    console.print(
+        "[green]Manutenção concluída.[/green] "
+        f"decayed={result['decayed']} gc={result['garbage_collected']} conflicts={result['conflicts_resolved']}"
+    )
+
+
 @db_app.command("migrate")
 def db_migrate():
     """Rodar migrations do banco de dados."""
