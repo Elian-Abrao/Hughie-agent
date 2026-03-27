@@ -23,6 +23,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
+from hughie.approvals import ApprovalRequired, approval_context, register_decision
 from hughie.core.graph import build_graph
 from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
@@ -101,7 +102,20 @@ async def chat(req: ChatRequest):
         "session_id": session_id,
         "brain_context": "",
     }
-    result = await _graph.ainvoke(state, {"recursion_limit": settings.recursion_limit})
+    try:
+        with approval_context(session_id=session_id, mode="web"):
+            result = await _graph.ainvoke(state, {"recursion_limit": settings.recursion_limit})
+    except ApprovalRequired as approval:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "approval_required",
+                "session_id": session_id,
+                "message": approval.message,
+                "approve_label": approval.approve_label,
+                "reject_label": approval.reject_label,
+            },
+        )
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
             return {"reply": msg.content, "session_id": session_id}
@@ -126,6 +140,30 @@ def _build_approval_message(original_message: str, tools_used: list[str]) -> str
     )
 
 
+def _approval_event(
+    *,
+    session_id: str,
+    message: str,
+    approve_label: str,
+    reject_label: str,
+    approve_decision: str,
+    reject_decision: str,
+):
+    return {
+        "event": "approval",
+        "data": json.dumps(
+            {
+                "session_id": session_id,
+                "message": message,
+                "approve_label": approve_label,
+                "reject_label": reject_label,
+                "approve_decision": approve_decision,
+                "reject_decision": reject_decision,
+            }
+        ),
+    }
+
+
 async def _stream_chat_run(
     *,
     state: dict[str, Any],
@@ -137,55 +175,72 @@ async def _stream_chat_run(
     step_count = 0
     tools_used: list[str] = []
     approval_threshold = max(1, recursion_limit - 2)
+    original_message = ""
+    for msg in state["messages"]:
+        if isinstance(msg, HumanMessage):
+            original_message = str(msg.content)
+            break
 
-    async for chunk, metadata in _graph.astream(
-        state,
-        stream_mode="messages",
-        config={"recursion_limit": recursion_limit},
-    ):
-        node = metadata.get("langgraph_node", "")
-        if node and node != prev_node:
-            prev_node = node
-            step_count += 1
+    try:
+        with approval_context(session_id=session_id, mode="web"):
+            async for chunk, metadata in _graph.astream(
+                state,
+                stream_mode="messages",
+                config={"recursion_limit": recursion_limit},
+            ):
+                node = metadata.get("langgraph_node", "")
+                if node and node != prev_node:
+                    prev_node = node
+                    step_count += 1
 
-            if allow_pause and node == "tools" and step_count >= approval_threshold:
-                original_message = ""
-                for msg in state["messages"]:
-                    if isinstance(msg, HumanMessage):
-                        original_message = str(msg.content)
-                        break
-
-                _pending_chats[session_id] = {
-                    "message": original_message,
-                    "tools": list(tools_used),
-                    "recursion_limit": recursion_limit,
-                }
-                yield {
-                    "event": "approval",
-                    "data": json.dumps(
-                        {
-                            "session_id": session_id,
-                            "message": _build_approval_message(original_message, tools_used),
-                            "continue_label": "Continuar",
-                            "respond_now_label": "Responder agora",
+                    if allow_pause and node == "tools" and step_count >= approval_threshold:
+                        _pending_chats[session_id] = {
+                            "type": "run_budget",
+                            "message": original_message,
+                            "tools": list(tools_used),
+                            "recursion_limit": recursion_limit,
                         }
-                    ),
-                }
-                return
+                        yield _approval_event(
+                            session_id=session_id,
+                            message=_build_approval_message(original_message, tools_used),
+                            approve_label="Continuar",
+                            reject_label="Responder agora",
+                            approve_decision="continue",
+                            reject_decision="respond_now",
+                        )
+                        return
 
-        if (
-            isinstance(chunk, AIMessageChunk)
-            and node == "chat"
-            and chunk.content
-            and not getattr(chunk, "tool_call_chunks", None)
-        ):
-            yield {"event": "text", "data": json.dumps({"text": chunk.content})}
+                if (
+                    isinstance(chunk, AIMessageChunk)
+                    and node == "chat"
+                    and chunk.content
+                    and not getattr(chunk, "tool_call_chunks", None)
+                ):
+                    yield {"event": "text", "data": json.dumps({"text": chunk.content})}
 
-        elif node == "tools":
-            tool_name = getattr(chunk, "name", None)
-            if tool_name:
-                tools_used.append(tool_name)
-                yield {"event": "tool", "data": json.dumps({"tool": tool_name})}
+                elif node == "tools":
+                    tool_name = getattr(chunk, "name", None)
+                    if tool_name:
+                        tools_used.append(tool_name)
+                        yield {"event": "tool", "data": json.dumps({"tool": tool_name})}
+    except ApprovalRequired as approval:
+        _pending_chats[session_id] = {
+            "type": "tool_confirmation",
+            "message": original_message,
+            "action_key": approval.action_key,
+            "approve_label": approval.approve_label,
+            "reject_label": approval.reject_label,
+            "approval_message": approval.message,
+        }
+        yield _approval_event(
+            session_id=session_id,
+            message=approval.message,
+            approve_label=approval.approve_label,
+            reject_label=approval.reject_label,
+            approve_decision="approve",
+            reject_decision="deny",
+        )
+        return
 
 
 @app.post("/v1/chat/stream")
@@ -227,13 +282,17 @@ async def chat_decision_stream(req: ChatDecisionRequest):
         return JSONResponse(status_code=404, content={"detail": "No pending approval for this session"})
 
     decision = req.decision.strip().lower()
-    if decision not in {"continue", "respond_now"}:
+    if decision not in {"continue", "respond_now", "approve", "deny"}:
         return JSONResponse(status_code=400, content={"detail": "Invalid decision"})
 
     message = pending["message"]
     _pending_chats.pop(req.session_id, None)
 
-    if decision == "respond_now":
+    if pending["type"] == "tool_confirmation":
+        register_decision(req.session_id, pending["action_key"], decision == "approve")
+        recursion_limit = settings.recursion_limit
+        allow_pause = True
+    elif decision == "respond_now":
         message = (
             f"{message}\n\n"
             "IMPORTANTE: pare a exploração extensa e responda agora usando somente o que já for possível concluir. "

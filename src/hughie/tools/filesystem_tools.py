@@ -1,9 +1,11 @@
 """Filesystem tools: read, write, list, find."""
 
 import fnmatch
+import hashlib
 from pathlib import Path
 
 from langchain_core.tools import tool
+from hughie.approvals import confirm_or_raise
 
 MAX_READ = 20_000   # chars
 MAX_RESULTS = 50
@@ -44,16 +46,16 @@ async def write_file(path: str, content: str) -> str:
         path: Absolute or relative path to the file
         content: Content to write
     """
-    import asyncio
-
     p = _safe_path(path)
-    loop = asyncio.get_event_loop()
     action = "overwrite" if p.exists() else "create"
-    answer = await loop.run_in_executor(
-        None,
-        lambda: input(f"\n⚠️  Hughie quer {action} o arquivo:\n  {p}\nConfirmar? [s/N]: ").strip().lower(),
+    action_key = f"write_file:{p}:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+    confirmed = await confirm_or_raise(
+        action_key=action_key,
+        prompt=f"⚠️  Hughie quer {action} o arquivo:\n  {p}",
+        approve_label="Autorizar escrita",
+        reject_label="Negar escrita",
     )
-    if answer not in ("s", "sim", "y", "yes"):
+    if not confirmed:
         return "Write cancelled by user."
 
     try:

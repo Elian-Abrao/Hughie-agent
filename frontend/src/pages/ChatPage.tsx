@@ -91,8 +91,10 @@ export default function ChatPage() {
             assistantId,
             sessionId: ev.data.session_id,
             message: ev.data.message,
-            continueLabel: ev.data.continue_label,
-            respondNowLabel: ev.data.respond_now_label,
+            approveLabel: ev.data.approve_label,
+            rejectLabel: ev.data.reject_label,
+            approveDecision: ev.data.approve_decision,
+            rejectDecision: ev.data.reject_decision,
           });
           updateMessage(assistantId, (msg) => ({
             ...msg,
@@ -129,7 +131,7 @@ export default function ChatPage() {
     textareaRef.current?.focus();
   }, [appendMessages, input, setPendingApproval, setSessionId, streaming, updateMessage]);
 
-  const handleDecision = useCallback(async (decision: "continue" | "respond_now") => {
+  const handleDecision = useCallback(async (decision: "continue" | "respond_now" | "approve" | "deny") => {
     if (!pendingApproval || streaming) return;
 
     setPendingApproval(null);
@@ -141,7 +143,11 @@ export default function ChatPage() {
         ...msg.activity,
         decision === "continue"
           ? "Usuário autorizou continuar a investigação."
-          : "Usuário pediu para responder imediatamente.",
+          : decision === "respond_now"
+            ? "Usuário pediu para responder imediatamente."
+            : decision === "approve"
+              ? "Usuário autorizou a ação solicitada."
+              : "Usuário negou a ação solicitada.",
       ],
     }));
 
@@ -169,8 +175,10 @@ export default function ChatPage() {
             assistantId: pendingApproval.assistantId,
             sessionId: ev.data.session_id,
             message: ev.data.message,
-            continueLabel: ev.data.continue_label,
-            respondNowLabel: ev.data.respond_now_label,
+            approveLabel: ev.data.approve_label,
+            rejectLabel: ev.data.reject_label,
+            approveDecision: ev.data.approve_decision,
+            rejectDecision: ev.data.reject_decision,
           });
           updateMessage(pendingApproval.assistantId, (msg) => ({
             ...msg,
@@ -228,16 +236,16 @@ export default function ChatPage() {
               <p className="text-sm text-text">{pendingApproval.message}</p>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={() => void handleDecision("continue")}
+                  onClick={() => void handleDecision(pendingApproval.approveDecision)}
                   className="rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-h"
                 >
-                  {pendingApproval.continueLabel}
+                  {pendingApproval.approveLabel}
                 </button>
                 <button
-                  onClick={() => void handleDecision("respond_now")}
+                  onClick={() => void handleDecision(pendingApproval.rejectDecision)}
                   className="rounded-lg border border-border bg-surface2 px-3 py-2 text-sm font-medium text-text hover:border-border-2"
                 >
-                  {pendingApproval.respondNowLabel}
+                  {pendingApproval.rejectLabel}
                 </button>
               </div>
             </div>

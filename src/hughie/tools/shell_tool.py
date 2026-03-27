@@ -1,9 +1,9 @@
 """Shell execution tool with read/write detection."""
 
-import asyncio
 import shlex
 import subprocess
 from langchain_core.tools import tool
+from hughie.approvals import confirm_or_raise
 
 # Commands considered safe to run without confirmation
 _READ_ONLY = frozenset([
@@ -41,15 +41,6 @@ def _is_read_only(command: str) -> bool:
     return False
 
 
-async def _confirm(command: str) -> bool:
-    loop = asyncio.get_event_loop()
-    answer = await loop.run_in_executor(
-        None,
-        lambda: input(f"\n⚠️  Hughie quer executar:\n  {command}\nConfirmar? [s/N]: ").strip().lower(),
-    )
-    return answer in ("s", "sim", "y", "yes")
-
-
 @tool
 async def shell_exec(command: str, working_dir: str = "") -> str:
     """Execute a shell command on the local machine.
@@ -62,7 +53,13 @@ async def shell_exec(command: str, working_dir: str = "") -> str:
         working_dir: Optional working directory (absolute path)
     """
     if not _is_read_only(command):
-        confirmed = await _confirm(command)
+        display_command = f"cd {shlex.quote(working_dir)} && {command}" if working_dir else command
+        confirmed = await confirm_or_raise(
+            action_key=f"shell_exec:{working_dir}:{command}",
+            prompt=f"⚠️  Hughie quer executar:\n  {display_command}",
+            approve_label="Autorizar comando",
+            reject_label="Negar comando",
+        )
         if not confirmed:
             return "Command cancelled by user."
 

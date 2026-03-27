@@ -6,8 +6,10 @@ Read-only commands run without confirmation; write/destructive ones ask first.
 """
 
 import asyncio
+import hashlib
 import shlex
 from langchain_core.tools import tool
+from hughie.approvals import confirm_or_raise
 
 _READ_ONLY = frozenset([
     "ls", "ll", "la", "cat", "head", "tail", "less", "more",
@@ -52,15 +54,6 @@ def _is_read_only(command: str) -> bool:
     return False
 
 
-async def _confirm(host: str, action: str) -> bool:
-    loop = asyncio.get_event_loop()
-    answer = await loop.run_in_executor(
-        None,
-        lambda: input(f"\n⚠️  Hughie quer executar em [{host}]:\n  {action}\nConfirmar? [s/N]: ").strip().lower(),
-    )
-    return answer in ("s", "sim", "y", "yes")
-
-
 async def _run(host: str, command: str, stdin: bytes | None = None) -> str:
     cmd = _ssh_base(host) + [command]
     try:
@@ -102,7 +95,12 @@ async def ssh_exec(host: str, command: str, working_dir: str = "") -> str:
     full_command = f"cd {shlex.quote(working_dir)} && {command}" if working_dir else command
 
     if not _is_read_only(command):
-        confirmed = await _confirm(host, full_command)
+        confirmed = await confirm_or_raise(
+            action_key=f"ssh_exec:{host}:{working_dir}:{command}",
+            prompt=f"⚠️  Hughie quer executar em [{host}]:\n  {full_command}",
+            approve_label="Autorizar comando remoto",
+            reject_label="Negar comando remoto",
+        )
         if not confirmed:
             return "Comando cancelado pelo usuário."
 
@@ -131,7 +129,12 @@ async def ssh_write_file(host: str, path: str, content: str) -> str:
         path: Absolute path to the file on the remote host
         content: Content to write (overwrites existing file)
     """
-    confirmed = await _confirm(host, f"escrever {len(content)} chars em {path}")
+    confirmed = await confirm_or_raise(
+        action_key=f"ssh_write_file:{host}:{path}:{hashlib.sha256(content.encode('utf-8')).hexdigest()}",
+        prompt=f"⚠️  Hughie quer escrever {len(content)} chars em [{host}]:\n  {path}",
+        approve_label="Autorizar escrita remota",
+        reject_label="Negar escrita remota",
+    )
     if not confirmed:
         return "Cancelado pelo usuário."
 

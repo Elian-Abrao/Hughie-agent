@@ -34,8 +34,10 @@ export type StreamEvent =
       data: {
         session_id: string;
         message: string;
-        continue_label: string;
-        respond_now_label: string;
+        approve_label: string;
+        reject_label: string;
+        approve_decision: "continue" | "approve";
+        reject_decision: "respond_now" | "deny";
       };
     }
   | { event: "error"; data: { error: string } }
@@ -90,7 +92,7 @@ export async function* streamChat(
 
 export async function* streamChatDecision(
   sessionId: string,
-  decision: "continue" | "respond_now",
+  decision: "continue" | "respond_now" | "approve" | "deny",
   signal?: AbortSignal
 ): AsyncGenerator<StreamEvent> {
   const res = await fetch(`${BASE}/v1/chat/decision/stream`, {

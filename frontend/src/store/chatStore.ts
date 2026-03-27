@@ -14,8 +14,10 @@ export interface PendingApproval {
   assistantId: string;
   sessionId: string;
   message: string;
-  continueLabel: string;
-  respondNowLabel: string;
+  approveLabel: string;
+  rejectLabel: string;
+  approveDecision: "continue" | "approve";
+  rejectDecision: "respond_now" | "deny";
 }
 
 interface ChatStore {
