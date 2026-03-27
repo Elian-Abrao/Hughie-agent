@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ from google import genai
 from google.genai import types as genai_types
 
 from hughie.config import get_settings
-from hughie.memory import brain_store, conversation_store, link_store
+from hughie.memory import brain_store, conversation_store, episode_store, link_store
 from hughie.memory.database import get_pool
 from hughie.memory.file_reader import (
     classify_path,
@@ -165,7 +166,7 @@ async def _get_unprocessed_turns(session_id: str) -> list:
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
-            SELECT role, content FROM conversations
+            SELECT role, content, metadata, created_at FROM conversations
             WHERE session_id = $1
               AND created_at > COALESCE(
                   (SELECT last_processed_at FROM consolidation_state WHERE session_id = $1),
@@ -438,6 +439,67 @@ async def _merge_or_rewrite(existing_content: str, new_info: str) -> str:
     return result
 
 
+def _build_episode_prompt(
+    session_id: str,
+    conversation_text: str,
+    turns: list[Any],
+    note_titles: list[str],
+) -> str:
+    tool_names: list[str] = []
+    for turn in turns:
+        metadata = _turn_metadata(turn)
+        for name in metadata.get("tool_call_names", []):
+            normalized = str(name).strip()
+            if normalized and normalized not in tool_names:
+                tool_names.append(normalized)
+
+    files = sorted(extract_paths(conversation_text))
+    return (
+        "Você é o consolidator episódico do Hughie.\n"
+        "Extraia um episódio estruturado de uma sessão produtiva.\n"
+        "Responda APENAS com JSON válido no formato:\n"
+        "{\n"
+        '  "tarefa": "texto curto",\n'
+        '  "resultado": "texto curto",\n'
+        '  "tempo_total_segundos": 0,\n'
+        '  "arquivos_modificados": ["/caminho/ou/arquivo.py"],\n'
+        '  "decisoes_tomadas": ["decisão 1"],\n'
+        '  "erros_encontrados": [{"causa": "x", "solucao": "y"}],\n'
+        '  "aprendizados": ["aprendizado 1"],\n'
+        '  "node_ids_afetados": []\n'
+        "}\n\n"
+        f"session_id: {session_id}\n"
+        f"tools observadas: {tool_names}\n"
+        f"arquivos mencionados: {files}\n"
+        f"notas afetadas no grafo: {note_titles}\n\n"
+        f"Conversa:\n{conversation_text}"
+    )
+
+
+async def _extract_episode(
+    session_id: str,
+    conversation_text: str,
+    turns: list[Any],
+    note_titles: list[str],
+) -> dict[str, Any] | None:
+    prompt = _build_episode_prompt(session_id, conversation_text, turns, note_titles)
+
+    async def _call():
+        response_text = await _generate_text(prompt, response_format="json")
+        payload = _extract_json_payload(response_text)
+        return payload if isinstance(payload, dict) else {}
+
+    payload = await _call_with_retry(_call)
+    if payload is None:
+        return None
+
+    if not payload.get("tempo_total_segundos"):
+        payload["tempo_total_segundos"] = _estimate_session_duration_seconds(turns)
+    if not payload.get("arquivos_modificados"):
+        payload["arquivos_modificados"] = sorted(extract_paths(conversation_text))
+    return payload
+
+
 # ── Link normalisation ────────────────────────────────────────────────────────
 
 def _normalize_link_candidate(
@@ -508,19 +570,77 @@ def _derive_path_links(
 # ── Note processing ───────────────────────────────────────────────────────────
 
 def _turn_role_and_content(turn: Any) -> tuple[str, str]:
-    if isinstance(turn, dict):
+    if isinstance(turn, Mapping):
         return str(turn.get("role", "")), str(turn.get("content", ""))
+    try:
+        normalized = dict(turn)
+    except Exception:
+        normalized = None
+    if isinstance(normalized, dict):
+        return str(normalized.get("role", "")), str(normalized.get("content", ""))
     role = getattr(turn, "role", "")
     content = getattr(turn, "content", "")
     return str(role), str(content)
+
+
+def _turn_metadata(turn: Any) -> dict[str, Any]:
+    if isinstance(turn, Mapping):
+        metadata = turn.get("metadata")
+    else:
+        try:
+            normalized = dict(turn)
+        except Exception:
+            normalized = None
+        metadata = normalized.get("metadata") if isinstance(normalized, dict) else getattr(turn, "metadata", {})
+    if isinstance(metadata, str):
+        text = metadata.strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _session_has_productive_tool_calls(turns: list[Any]) -> bool:
+    for turn in turns:
+        metadata = _turn_metadata(turn)
+        if metadata.get("had_tool_calls"):
+            return True
+        if int(metadata.get("tool_message_count") or 0) > 0:
+            return True
+        if metadata.get("tool_call_names"):
+            return True
+    return False
+
+
+def _estimate_session_duration_seconds(turns: list[Any]) -> int | None:
+    timestamps = []
+    for turn in turns:
+        if isinstance(turn, Mapping):
+            created_at = turn.get("created_at")
+        else:
+            try:
+                normalized = dict(turn)
+            except Exception:
+                normalized = None
+            created_at = normalized.get("created_at") if isinstance(normalized, dict) else getattr(turn, "created_at", None)
+        if created_at is not None:
+            timestamps.append(created_at)
+    if len(timestamps) < 2:
+        return None
+    return max(0, int((max(timestamps) - min(timestamps)).total_seconds()))
 
 
 async def _process_linknotes(
     notes: list[dict[str, Any]],
     conversation_text: str,
     path_cache: dict[str, str | None],
-) -> int:
+) -> tuple[int, list[str]]:
     count = 0
+    affected_node_ids: list[str] = []
     for note_data in notes:
         title = str(note_data.get("titulo") or "").strip()
         content = str(note_data.get("conteudo") or "").strip()
@@ -619,8 +739,57 @@ async def _process_linknotes(
 
         await link_store.replace_links_for_note(str(note.id), normalized_links, created_by="worker")
         count += 1
+        affected_node_ids.append(str(note.id))
 
-    return count
+    return count, affected_node_ids
+
+
+async def _promote_learnings_to_graph(
+    learnings: list[Any],
+    affected_node_ids: list[str],
+) -> list[str]:
+    promoted_ids: list[str] = []
+    unique_targets = [node_id for node_id in dict.fromkeys(affected_node_ids) if node_id]
+    for item in learnings:
+        text = str(item).strip()
+        if not text:
+            continue
+        title = f"Aprendizado: {text[:80]}"
+        note = await brain_store.create_note(
+            title=title,
+            content=text,
+            note_type="fact",
+            importance=1.0,
+            status="active",
+            source_kind="episode_learning",
+            metadata={"episode_learning": True},
+            fonte="execucao_real",
+            confianca=1.0,
+            peso_temporal=1.0,
+            criado_por="consolidator",
+            metadados={"kind": "episode_learning"},
+        )
+        promoted_ids.append(str(note.id))
+        if unique_targets:
+            await link_store.replace_links_for_note(
+                str(note.id),
+                [
+                    {
+                        "target_kind": "note",
+                        "target_note_id": target_id,
+                        "relation_type": "referencia",
+                        "tipo_relacao": "referencia",
+                        "weight": 1.0,
+                        "confianca": 1.0,
+                        "fonte": "execucao_real",
+                        "evidence": {"promoted_from_learning": True},
+                    }
+                    for target_id in unique_targets
+                    if target_id != str(note.id)
+                ],
+                created_by="consolidator",
+            )
+    return promoted_ids
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -660,7 +829,38 @@ async def run_consolidation(session_id: str, hint: str = "") -> int:
         settings.local_machine_host,
     )
 
-    count = await _process_linknotes(notes, conversation_text, path_cache)
+    count, affected_node_ids = await _process_linknotes(notes, conversation_text, path_cache)
+
+    if _session_has_productive_tool_calls(turns):
+        episode_payload = await _extract_episode(
+            session_id,
+            conversation_text,
+            turns,
+            [str(note.get("titulo") or "").strip() for note in notes if str(note.get("titulo") or "").strip()],
+        )
+        if episode_payload:
+            promoted_learning_ids = await _promote_learnings_to_graph(
+                episode_payload.get("aprendizados", []),
+                affected_node_ids,
+            )
+            combined_node_ids = list(
+                dict.fromkeys(
+                    [
+                        *affected_node_ids,
+                        *promoted_learning_ids,
+                        *[str(node_id) for node_id in episode_payload.get("node_ids_afetados", []) if str(node_id).strip()],
+                    ]
+                )
+            )
+            episode_payload["node_ids_afetados"] = combined_node_ids
+            episode = await episode_store.create_episode(session_id, episode_payload)
+            await episode_store.link_episode_to_graph(episode.id, combined_node_ids)
+            logger.info(
+                "Consolidation created structured episode %s for session %s with %d affected node(s)",
+                episode.id,
+                session_id,
+                len(combined_node_ids),
+            )
 
     if not hint:
         await _mark_consolidated(session_id)
@@ -677,4 +877,4 @@ async def maybe_consolidate(session_id: str) -> None:
             if count:
                 logger.info("Consolidation: %d linknotes updated for session %s", count, session_id)
     except Exception as exc:
-        logger.error("Consolidation error for session %s: %s", session_id, exc)
+        logger.exception("Consolidation error for session %s: %s", session_id, exc)

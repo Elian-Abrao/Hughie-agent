@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from hughie.config import get_settings
 from hughie.core.state import HughieState
@@ -82,9 +82,19 @@ async def save_memory(state: HughieState) -> dict:
 
     last_user = None
     last_assistant = None
+    tool_messages: list[ToolMessage] = []
+    tool_call_names: list[str] = []
     for msg in reversed(messages):
         if last_assistant is None and isinstance(msg, AIMessage) and not msg.tool_calls:
             last_assistant = msg
+        elif isinstance(msg, AIMessage) and msg.tool_calls:
+            tool_call_names.extend(
+                str(tool_call.get("name") or "").strip()
+                for tool_call in msg.tool_calls
+                if str(tool_call.get("name") or "").strip()
+            )
+        elif isinstance(msg, ToolMessage):
+            tool_messages.append(msg)
         elif last_user is None and isinstance(msg, HumanMessage):
             last_user = msg
         if last_user and last_assistant:
@@ -93,7 +103,16 @@ async def save_memory(state: HughieState) -> dict:
     if last_user:
         await conversation_store.save_turn(session_id, "user", str(last_user.content))
     if last_assistant:
-        await conversation_store.save_turn(session_id, "assistant", str(last_assistant.content))
+        await conversation_store.save_turn(
+            session_id,
+            "assistant",
+            str(last_assistant.content),
+            metadata={
+                "had_tool_calls": bool(tool_call_names or tool_messages),
+                "tool_call_names": list(dict.fromkeys(tool_call_names)),
+                "tool_message_count": len(tool_messages),
+            },
+        )
 
     # Fire consolidation in background — does not block the response
     asyncio.create_task(maybe_consolidate(session_id))

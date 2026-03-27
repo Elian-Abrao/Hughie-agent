@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS conversations_session_id_idx ON conversations (session_id);
 CREATE INDEX IF NOT EXISTS conversations_created_at_idx ON conversations (created_at);
 
@@ -94,4 +96,22 @@ CREATE TABLE IF NOT EXISTS consolidation_state (
     session_id TEXT PRIMARY KEY,
     last_processed_at TIMESTAMPTZ DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS episodes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    tarefa TEXT NOT NULL,
+    resultado TEXT NOT NULL,
+    tempo_total_segundos INT,
+    arquivos_modificados JSONB DEFAULT '[]'::jsonb,
+    decisoes_tomadas JSONB DEFAULT '[]'::jsonb,
+    erros_encontrados JSONB DEFAULT '[]'::jsonb,
+    aprendizados JSONB DEFAULT '[]'::jsonb,
+    node_ids_afetados JSONB DEFAULT '[]'::jsonb,
+    embedding vector(768)
+);
+
+CREATE INDEX IF NOT EXISTS episodes_session_id_idx ON episodes (session_id);
+CREATE INDEX IF NOT EXISTS episodes_created_at_idx ON episodes (created_at DESC);
 """

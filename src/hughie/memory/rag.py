@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from hughie.memory import brain_graph, brain_store, embeddings, link_store
+from hughie.memory import brain_graph, brain_store, embeddings, episode_store, link_store
 from hughie.memory.database import get_pool
 
 logger = logging.getLogger(__name__)
@@ -188,8 +188,11 @@ async def retrieve(query: str, task_context: str, top_k: int = 10) -> list[RAGRe
     return ranked
 
 
-def format_context(ranked_results: list[RAGResult]) -> str:
-    if not ranked_results:
+def format_context(
+    ranked_results: list[RAGResult],
+    episodes: list[episode_store.Episode] | None = None,
+) -> str:
+    if not ranked_results and not episodes:
         return ""
 
     lines = ["Contexto recuperado do grafo e memória semântica:"]
@@ -201,14 +204,25 @@ def format_context(ranked_results: list[RAGResult]) -> str:
             f"confianca={metadata['confianca']} peso_temporal={metadata['peso_temporal']} "
             f"score={metadata['score']} hop={metadata['hop_distance']}"
         )
+    if episodes:
+        lines.append("")
+        lines.append("Episódios similares:")
+        for index, episode in enumerate(episodes, start=1):
+            lines.append(
+                f"{index}. tarefa={episode.tarefa} resultado={episode.resultado} "
+                f"arquivos={len(episode.arquivos_modificados)} aprendizados={len(episode.aprendizados)} "
+                f"nodes={len(episode.node_ids_afetados)}"
+            )
     return "\n".join(lines)
 
 
 async def retrieve_context_v2(query: str, task_context: str, top_k: int = 10) -> dict[str, Any]:
     ranked = await retrieve(query=query, task_context=task_context, top_k=top_k)
+    episodes = await episode_store.search_similar_episodes(query or task_context, top_k=3)
     return {
         "results": ranked,
-        "context": format_context(ranked),
+        "episodes": episodes,
+        "context": format_context(ranked, episodes=episodes),
     }
 
 

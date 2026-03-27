@@ -162,6 +162,28 @@ def brain_delete(note_id: str = typer.Argument(..., help="UUID da nota")):
         console.print(f"[red]Nota {note_id} não encontrada.[/red]")
 
 
+@brain_app.command("consolidate")
+def brain_consolidate(
+    session_id: str | None = typer.Argument(None, help="Session ID para consolidar"),
+    hint: str = typer.Option("", "--hint", help="Foco especial para a consolidação"),
+):
+    """Executar consolidação manual de uma sessão."""
+    from hughie.memory import conversation_store
+    from hughie.memory.consolidator import run_consolidation
+
+    target_session_id = session_id
+    if not target_session_id:
+        sessions = asyncio.run(conversation_store.list_sessions(limit=1))
+        if not sessions:
+            console.print("[red]Nenhuma sessão encontrada para consolidar.[/red]")
+            raise typer.Exit(code=1)
+        target_session_id = str(sessions[0]["session_id"])
+
+    console.print(f"[dim]Consolidando sessão {target_session_id}...[/dim]")
+    count = asyncio.run(run_consolidation(target_session_id, hint=hint))
+    console.print(f"[green]Consolidação concluída. {count} nota(s) atualizadas.[/green]")
+
+
 @db_app.command("migrate")
 def db_migrate():
     """Rodar migrations do banco de dados."""
