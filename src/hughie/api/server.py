@@ -18,7 +18,6 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -26,7 +25,7 @@ from sse_starlette.sse import EventSourceResponse
 from hughie.core.graph import build_graph
 from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
-from hughie.memory import brain_store
+from hughie.memory import brain_store, conversation_store
 from hughie.memory.database import close_pool, run_migrations
 from hughie.tools.mcp_loader import close_mcp_client
 from hughie.tools.registry import load_all_tools
@@ -168,11 +167,28 @@ async def search_notes(q: str = Query(...), limit: int = Query(5)):
     ]
 
 
-# ── Static files (web UI) ─────────────────────────────────────────────────────
-# Mounted last so API routes take priority
+@app.get("/v1/sessions")
+async def list_sessions(limit: int = Query(30)):
+    sessions = await conversation_store.list_sessions(limit=limit)
+    return [
+        {
+            "session_id": s["session_id"],
+            "message_count": s["message_count"],
+            "last_at": s["last_at"].isoformat(),
+            "last_message": (s["last_message"] or "")[:120],
+        }
+        for s in sessions
+    ]
 
-import pathlib
 
-_STATIC = pathlib.Path(__file__).parent / "static"
-if _STATIC.exists():
-    app.mount("/", StaticFiles(directory=str(_STATIC), html=True), name="static")
+@app.get("/v1/sessions/{session_id}")
+async def get_session_messages(session_id: str):
+    turns = await conversation_store.get_recent(session_id, limit=200)
+    return [
+        {
+            "role": t.role,
+            "content": t.content,
+            "created_at": t.created_at.isoformat(),
+        }
+        for t in turns
+    ]

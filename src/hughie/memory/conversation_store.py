@@ -52,3 +52,27 @@ def save_turn_sync(session_id: str, role: str, content: str) -> ConversationTurn
 
 def get_recent_sync(session_id: str, limit: int = 20) -> list[ConversationTurn]:
     return asyncio.run(get_recent(session_id, limit))
+
+
+async def list_sessions(limit: int = 50) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                session_id,
+                COUNT(*) AS message_count,
+                MAX(created_at) AS last_at,
+                (
+                    SELECT content FROM conversations c2
+                    WHERE c2.session_id = c.session_id
+                    ORDER BY created_at DESC LIMIT 1
+                ) AS last_message
+            FROM conversations c
+            GROUP BY session_id
+            ORDER BY last_at DESC
+            LIMIT $1
+            """,
+            limit,
+        )
+    return [dict(r) for r in rows]

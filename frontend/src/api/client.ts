@@ -1,0 +1,120 @@
+const BASE = import.meta.env.VITE_API_URL ?? "";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export interface BrainNote {
+  id: string;
+  title: string;
+  type: string;
+  importance: number;
+  status: string;
+  content: string;
+  updated_at: string;
+}
+
+export interface Session {
+  session_id: string;
+  message_count: number;
+  last_at: string;
+  last_message: string;
+}
+
+export interface SessionMessage {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export type StreamEvent =
+  | { event: "session"; data: { session_id: string } }
+  | { event: "text"; data: { text: string } }
+  | { event: "tool"; data: { tool: string } }
+  | { event: "error"; data: { error: string } }
+  | { event: "done"; data: Record<string, never> };
+
+// ── Chat ──────────────────────────────────────────────────────────────────────
+
+export async function* streamChat(
+  message: string,
+  sessionId: string,
+  signal?: AbortSignal
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch(`${BASE}/v1/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, session_id: sessionId }),
+    signal,
+  });
+
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!;
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventName = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        const raw = line.slice(6).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          const data = JSON.parse(raw);
+          if (eventName) yield { event: eventName, data } as StreamEvent;
+        } catch {
+          // ignore malformed SSE
+        }
+        eventName = null;
+      }
+    }
+  }
+}
+
+// ── Sessions ──────────────────────────────────────────────────────────────────
+
+export async function fetchSessions(limit = 30): Promise<Session[]> {
+  const res = await fetch(`${BASE}/v1/sessions?limit=${limit}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchSessionMessages(sessionId: string): Promise<SessionMessage[]> {
+  const res = await fetch(`${BASE}/v1/sessions/${encodeURIComponent(sessionId)}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+// ── Brain ─────────────────────────────────────────────────────────────────────
+
+export async function fetchNotes(noteType = "", limit = 100): Promise<BrainNote[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (noteType) params.set("note_type", noteType);
+  const res = await fetch(`${BASE}/v1/brain/notes?${params}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function searchNotes(q: string, limit = 5): Promise<BrainNote[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const res = await fetch(`${BASE}/v1/brain/search?${params}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
