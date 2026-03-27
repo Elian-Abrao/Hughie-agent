@@ -18,6 +18,7 @@ export interface BrainNote {
   metadados: Record<string, unknown>;
   updated_at: string;
   created_at: string;
+  link_count?: number;
 }
 
 export interface Episode {

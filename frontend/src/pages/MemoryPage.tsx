@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
 import { deleteNote, fetchNotes, searchNotes, updateNote } from "../api/client";
 import type { BrainNote } from "../api/client";
+import { MarkdownContent } from "../components/MarkdownContent";
 import { IconCheck, IconEdit, IconSearch, IconTrash, IconX } from "../components/Icons";
 
 const TYPES = ["", "preference", "pattern", "project", "person", "fact"] as const;
@@ -106,7 +107,7 @@ export default function MemoryPage() {
       {/* ── List ── */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
-        <div className="px-6 py-4 border-b border-border bg-surface flex-shrink-0 space-y-3">
+        <div className="px-6 py-4 border-b border-border flex-shrink-0 space-y-3">
           <div>
             <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Memória</span>
             <span className="block text-sm font-medium text-text">Notas persistentes do Hughie</span>
@@ -170,9 +171,11 @@ export default function MemoryPage() {
             </div>
           )}
           {!loading && notes.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="text-4xl mb-3">🧠</div>
-              <p className="text-muted text-sm">{query ? "Nenhuma nota para essa busca" : "Nenhuma nota ainda"}</p>
+            <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+              <div className="h-10 w-10 rounded-xl bg-accent-dim border border-accent/30 flex items-center justify-center">
+                <img src="/Hughie.svg" alt="" className="h-7 w-7 object-contain opacity-60" />
+              </div>
+              <p className="text-muted text-sm">{query ? "Nenhuma nota para essa busca" : "Nenhuma nota registrada ainda"}</p>
             </div>
           )}
           {!loading && notes.length > 0 && (
@@ -307,11 +310,18 @@ export default function MemoryPage() {
             ) : (
               <>
                 <h2 className="text-strong font-semibold leading-snug">{selected.title}</h2>
-                <p className="text-sm text-muted-2 leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+                <div className="prose-chat text-sm">
+                  <MarkdownContent content={selected.content} />
+                </div>
               </>
             )}
             <div className="pt-3 border-t border-border space-y-2 text-xs">
               <Row label="Importância" value={selected.importance.toFixed(1)} />
+              {(selected.link_count ?? 0) > 0 && (
+                <Row label="Conexões" value={
+                  <span className="text-accent font-medium">{selected.link_count} link{selected.link_count !== 1 ? "s" : ""}</span>
+                } />
+              )}
               <Row label="Status"      value={<span className="capitalize">{selected.status}</span>} />
               <Row label="Atualizado"  value={new Date(selected.updated_at).toLocaleDateString("pt-BR")} />
               <p className="font-mono text-[10px] break-all text-muted/60 pt-1">{selected.id}</p>
@@ -350,12 +360,18 @@ function NoteCard({ note, selected, onClick }: { note: BrainNote; selected: bool
         <TypeBadge type={note.type} />
       </div>
       <p className="text-xs text-muted leading-relaxed line-clamp-3">{note.content}</p>
-      {note.importance >= 1.5 && (
-        <div className="flex items-center gap-1">
-          <span className="text-yellow-400 text-xs">★</span>
-          <span className="text-[11px] text-muted">{note.importance.toFixed(1)}</span>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        {note.importance >= 1.5 && (
+          <span className="text-[11px] text-muted flex items-center gap-0.5">
+            <span className="text-yellow-400">★</span> {note.importance.toFixed(1)}
+          </span>
+        )}
+        {(note.link_count ?? 0) > 0 && (
+          <span className="text-[11px] text-accent/80">
+            {note.link_count} link{note.link_count !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
     </button>
   );
 }

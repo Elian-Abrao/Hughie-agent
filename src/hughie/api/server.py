@@ -523,7 +523,24 @@ async def list_notes(note_type: str = Query(""), limit: int = Query(50)):
     notes = await brain_store.list_notes(limit=limit)
     if note_type:
         notes = [n for n in notes if n.type == note_type]
-    return [_serialize_note(n) for n in notes]
+
+    link_counts: dict[str, int] = {}
+    if notes:
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT source_note_id::text, COUNT(*) AS cnt FROM brain_links"
+                " WHERE source_note_id = ANY($1::uuid[]) GROUP BY source_note_id",
+                [n.id for n in notes],
+            )
+            link_counts = {r["source_note_id"]: r["cnt"] for r in rows}
+
+    result = []
+    for n in notes:
+        s = _serialize_note(n)
+        s["link_count"] = link_counts.get(n.id, 0)
+        result.append(s)
+    return result
 
 
 @app.get("/v1/brain/search")

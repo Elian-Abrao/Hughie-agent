@@ -11,13 +11,19 @@ from hughie.memory.consolidator import run_consolidation
 async def save_brain_note(title: str, content: str, note_type: str = "fact") -> str:
     """Save a note about the user to long-term memory.
 
-    Use this when the user shares preferences, personal facts, projects,
-    people they mention, or behavioral patterns worth remembering.
-    If a note with this title already exists, the content is merged.
+    Use proactively whenever the conversation contains preferences, decisions,
+    projects, people, or patterns worth remembering — without waiting for an
+    explicit request.
+
+    IMPORTANT: After calling this tool, always call create_linknote immediately
+    to connect the new note to related notes, files and directories in the graph.
+    A note without links is isolated and hard to discover later.
+
+    If a note with this title already exists, the content is merged automatically.
 
     Args:
-        title: Short descriptive title for the note (e.g. "Prefers dark mode")
-        content: Full content of the note
+        title: Specific, self-explanatory title (e.g. "Decisão: nginx como proxy do Hughie frontend")
+        content: Full content of the note — one concept only, no mixing of topics
         note_type: One of: preference, pattern, project, person, fact
     """
     existing = await brain_store.get_note_by_title(title)
@@ -69,14 +75,19 @@ async def create_linknote(
     focus: str,
     state: Annotated[dict, InjectedState],
 ) -> str:
-    """Ask the background memory worker to create or refresh linknotes.
+    """Create or refresh structured notes with links from the current conversation.
 
-    Use this when the user asks Hughie to register a new durable note, or when
-    a recent discussion should become a structured note with links to related
-    notes, files, and directories.
+    Call this:
+    - Immediately after save_brain_note to connect the new note to the graph.
+    - When a discussion introduces new concepts that should be linked to existing memory.
+    - When the user asks to "registrar", "anotar" or "lembrar" something.
+
+    The worker reads recent conversation history and extracts notes with links to
+    related notes, files and directories. Every note it creates is guaranteed to
+    have at least one link.
 
     Args:
-        focus: What the new linknote should capture.
+        focus: What specifically to capture (e.g. "decisão de usar pgvector para embeddings").
     """
     session_id = state.get("session_id", "")
     if not session_id:

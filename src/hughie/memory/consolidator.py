@@ -28,6 +28,7 @@ from google.genai import types as genai_types
 
 from hughie.config import get_settings
 from hughie.memory import brain_store, conversation_store, episode_store, link_store
+from hughie.prompts import render as render_prompt
 from hughie.memory.database import get_pool
 from hughie.memory.file_reader import (
     classify_path,
@@ -325,16 +326,16 @@ def _build_consolidation_prompt(
 ) -> str:
     hint_section = f"\n\nFoco especial: {hint}" if hint else ""
 
-    # Existing notes — semantic top-5 + hub top-5
     context_section = ""
     if context_notes:
         lines = [
-            "Notas já existentes no banco — use estes títulos EXATOS ao criar links para notas existentes:"
+            "## Notas já existentes\n"
+            "Use estes títulos EXATOS ao criar links para notas existentes:"
         ]
         for note in context_notes:
             snippet = note.content[:200].replace("\n", " ")
             lines.append(f'  • "{note.title}" [{note.type}] — {snippet}')
-        context_section = "\n\n" + "\n".join(lines)
+        context_section = "\n".join(lines)
 
     mentioned_paths = extract_paths(conversation_text)
     paths_section = ""
@@ -346,50 +347,15 @@ def _build_consolidation_prompt(
     file_section = ""
     if file_contents:
         parts = [f"[Arquivo: {path}]\n{content}" for path, content in file_contents.items()]
-        file_section = "\n\nConteúdo dos arquivos mencionados:\n" + "\n\n".join(parts)
+        file_section = "\n\nConteúdo dos arquivos mencionados:\n\n" + "\n\n".join(parts)
 
-    return (
-        "Você é o sistema de memória do Hughie, agente pessoal de Elian.\n"
-        "Analise a conversa abaixo e extraia conhecimento durável em notas estruturadas.\n"
-        f"{hint_section}"
-        f"{context_section}\n\n"
-        "REGRAS OBRIGATÓRIAS — leia com atenção:\n"
-        "1. Uma nota = um único conceito, decisão, projeto, pessoa ou preferência. NUNCA misture dois conceitos numa mesma nota.\n"
-        "2. Prefira criar 3 notas pequenas e linkadas entre si a 1 nota grande.\n"
-        "3. Nomes de nota devem ser específicos e autoexplicativos:\n"
-        '   BOM: "Decisão: nginx como proxy reverso do frontend Hughie"\n'
-        '   RUIM: "Frontend" ou "Informações do projeto" ou "Arquitetura"\n'
-        "4. Se dois conceitos se relacionam, crie AMBOS e declare o link entre eles.\n"
-        "5. Use os títulos EXATOS listados em 'Notas já existentes' ao criar links para notas existentes.\n"
-        "6. Só crie uma nota se a conversa trouxer informação nova ou complementar — evite duplicatas.\n"
-        "7. Se não houver nada relevante para registrar, retorne {\"notes\": []}.\n\n"
-        "Tipos de notas: preference (preferência do usuário), pattern (padrão de comportamento), "
-        "project (projeto ou iniciativa), person (pessoa), fact (fato técnico ou decisão).\n\n"
-        "Tipos de relação entre notas: related_to, depends_on, implemented_by, documented_in, "
-        "located_in, about, contradicts.\n\n"
-        "Retorne APENAS um objeto JSON válido, sem markdown, sem explicações:\n"
-        "{\n"
-        '  "notes": [\n'
-        "    {\n"
-        '      "titulo": "título específico e autoexplicativo",\n'
-        '      "conteudo": "conteúdo focado no único conceito desta nota",\n'
-        '      "tipo": "preference|pattern|project|person|fact",\n'
-        '      "importance": 0.0-2.0,\n'
-        '      "links": [\n'
-        "        {\n"
-        '          "target_kind": "note|file|directory",\n'
-        '          "target_title": "título exato de nota existente (apenas para note)",\n'
-        '          "target_path": "caminho absoluto (apenas para file/directory)",\n'
-        '          "relation_type": "related_to|depends_on|implemented_by|documented_in|located_in|about|contradicts",\n'
-        '          "weight": 0.0-1.0\n'
-        "        }\n"
-        "      ]\n"
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        f"Conversa:\n{conversation_text}"
-        f"{paths_section}"
-        f"{file_section}"
+    return render_prompt(
+        "consolidation",
+        hint_section=hint_section,
+        context_section=context_section,
+        conversation_text=conversation_text,
+        paths_section=paths_section,
+        file_section=file_section,
     )
 
 
@@ -421,13 +387,10 @@ async def _extract_linknotes(
 
 
 async def _merge_or_rewrite(existing_content: str, new_info: str) -> str:
-    prompt = (
-        "Você tem uma nota existente e uma nova informação sobre o mesmo tema.\n"
-        "Reescreva a nota incorporando a nova informação de forma coesa.\n"
-        "Remova redundâncias. Preserve informações importantes. Seja conciso.\n\n"
-        f"Nota atual:\n{existing_content}\n\n"
-        f"Nova informação:\n{new_info}\n\n"
-        "Responda APENAS com o novo conteúdo da nota, sem explicações."
+    prompt = render_prompt(
+        "merge",
+        existing_content=existing_content,
+        new_info=new_info,
     )
 
     async def _call():
@@ -454,25 +417,13 @@ def _build_episode_prompt(
                 tool_names.append(normalized)
 
     files = sorted(extract_paths(conversation_text))
-    return (
-        "Você é o consolidator episódico do Hughie.\n"
-        "Extraia um episódio estruturado de uma sessão produtiva.\n"
-        "Responda APENAS com JSON válido no formato:\n"
-        "{\n"
-        '  "tarefa": "texto curto",\n'
-        '  "resultado": "texto curto",\n'
-        '  "tempo_total_segundos": 0,\n'
-        '  "arquivos_modificados": ["/caminho/ou/arquivo.py"],\n'
-        '  "decisoes_tomadas": ["decisão 1"],\n'
-        '  "erros_encontrados": [{"causa": "x", "solucao": "y"}],\n'
-        '  "aprendizados": ["aprendizado 1"],\n'
-        '  "node_ids_afetados": []\n'
-        "}\n\n"
-        f"session_id: {session_id}\n"
-        f"tools observadas: {tool_names}\n"
-        f"arquivos mencionados: {files}\n"
-        f"notas afetadas no grafo: {note_titles}\n\n"
-        f"Conversa:\n{conversation_text}"
+    return render_prompt(
+        "episode",
+        session_id=session_id,
+        tool_names=str(tool_names),
+        files=str(files),
+        note_titles=str(note_titles),
+        conversation_text=conversation_text,
     )
 
 

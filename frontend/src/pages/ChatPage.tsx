@@ -312,11 +312,40 @@ function EmptyState() {
   );
 }
 
+function ActivityBlock({ activity, streaming }: { activity: string[]; streaming: boolean }) {
+  const [open, setOpen] = useState(true);
+  if (activity.length === 0 && !streaming) return null;
+
+  const label = streaming
+    ? <span>pensando<span className="animate-blink">…</span></span>
+    : <span className="opacity-50">{activity.length} {activity.length === 1 ? "passo" : "passos"}</span>;
+
+  return (
+    <div className="text-xs">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-muted hover:text-text transition-colors py-0.5"
+      >
+        <span className={clsx("inline-block text-[9px] transition-transform duration-150", open && "rotate-90")}>
+          ▶
+        </span>
+        {label}
+      </button>
+      {open && (
+        <div className="mt-0.5 ml-2.5 border-l-2 border-border/40 pl-3 pb-1 space-y-0.5">
+          {activity.map((line, i) => (
+            <p key={i} className="text-[11px] text-muted/75 leading-snug font-mono">{line}</p>
+          ))}
+          {streaming && <p className="text-[11px] text-muted/30 animate-pulse font-mono">…</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
-  const [expanded, setExpanded] = useState(false);
-  const showActivity = !isUser && (msg.streaming || msg.activity.length > 0 || msg.tools.length > 0);
-  const activityLabel = msg.streaming ? "pensando..." : "atividade";
+  const hasActivity = !isUser && (msg.activity.length > 0 || msg.streaming);
 
   return (
     <div className={clsx("flex gap-3 animate-fadein", isUser && "flex-row-reverse")}>
@@ -328,59 +357,40 @@ function MessageBubble({ msg }: { msg: Message }) {
             : "border-accent/25 bg-accent-dim text-accent"
         )}
       >
-        {isUser ? (
-          "E"
-        ) : (
-          <img src="/Hughie.svg" alt="Hughie" className="h-5 w-5 object-contain" />
-        )}
+        {isUser ? "E" : <img src="/Hughie.svg" alt="Hughie" className="h-5 w-5 object-contain" />}
       </div>
 
-      <div className={clsx("flex min-w-0 flex-col gap-2", isUser ? "max-w-[80%] items-end" : "flex-1")}>
-        <div
-          className={clsx(
-            "rounded-2xl text-sm leading-relaxed",
-            isUser
-              ? "rounded-tr-sm border border-user-border bg-user-bg px-4 py-3 text-text"
-              : clsx(
-                  "w-full rounded-tl-sm border px-4 py-3",
-                  msg.error
-                    ? "border-red-900/50 bg-red-950/40 text-red-300"
-                    : "border-border/80 bg-surface2"
-                )
-          )}
-        >
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-          ) : (
-            <>
-              {msg.content ? (
-                <MarkdownContent content={msg.content} />
-              ) : msg.streaming ? (
-                <span className="text-xs italic text-muted">pensando…</span>
-              ) : null}
-              {msg.streaming && msg.content && (
-                <span className="ml-0.5 inline-block h-[0.9em] w-0.5 animate-blink rounded-sm bg-accent align-middle" />
-              )}
-              {showActivity && (
-                <div className="mt-3 border-t border-border/60 pt-2">
-                  <button
-                    onClick={() => setExpanded((value) => !value)}
-                    className="text-xs italic text-muted transition-colors hover:text-text"
-                  >
-                    {expanded ? "ocultar atividade" : activityLabel}
-                  </button>
-                  {expanded && (
-                    <blockquote className="mt-2 space-y-1 border-l-2 border-accent/30 pl-3 text-xs text-muted">
-                      {msg.activity.map((line, index) => (
-                        <p key={`${line}-${index}`}>{">"} {line}</p>
-                      ))}
-                    </blockquote>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+      <div className={clsx("flex min-w-0 flex-col gap-1.5", isUser ? "max-w-[80%] items-end" : "flex-1")}>
+        {hasActivity && (
+          <ActivityBlock activity={msg.activity} streaming={msg.streaming} />
+        )}
+
+        {(msg.content || msg.error) && (
+          <div
+            className={clsx(
+              "rounded-2xl text-sm leading-relaxed",
+              isUser
+                ? "rounded-tr-sm border border-user-border bg-user-bg px-4 py-3 text-text"
+                : clsx(
+                    "w-full rounded-tl-sm border px-4 py-3",
+                    msg.error
+                      ? "border-red-900/50 bg-red-950/40 text-red-300"
+                      : "border-border/80 bg-surface2"
+                  )
+            )}
+          >
+            {isUser ? (
+              <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+            ) : (
+              <>
+                {msg.content && <MarkdownContent content={msg.content} />}
+                {msg.streaming && msg.content && (
+                  <span className="ml-0.5 inline-block h-[0.9em] w-0.5 animate-blink rounded-sm bg-accent align-middle" />
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

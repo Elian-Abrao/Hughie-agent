@@ -8,6 +8,7 @@ from hughie.llm.codex_chat_model import CodexChatModel
 from hughie.memory import conversation_store
 from hughie.memory.consolidator import maybe_consolidate
 from hughie.memory.rag import retrieve_context_v2
+from hughie.prompts import load as load_prompt
 from hughie.tools.brain_tools import BRAIN_TOOLS
 
 _llm: CodexChatModel | None = None
@@ -59,7 +60,7 @@ async def chat(state: HughieState) -> dict:
     settings = get_settings()
     llm = _get_llm()
 
-    system_content = settings.system_prompt
+    system_content = settings.system_prompt or load_prompt("system")
     if state.get("brain_context"):
         system_content += f"\n\n{state['brain_context']}"
 
