@@ -16,8 +16,29 @@ CREATE TABLE IF NOT EXISTS brain_notes (
 ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
 ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS source_kind VARCHAR(30) DEFAULT 'auto_worker';
 ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS fonte VARCHAR(30) DEFAULT 'input_manual';
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS confianca FLOAT DEFAULT 0.3;
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS peso_temporal FLOAT DEFAULT 1.0;
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS criado_por TEXT DEFAULT 'system';
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS ultima_atualizacao TIMESTAMPTZ DEFAULT now();
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS historico JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE brain_notes ADD COLUMN IF NOT EXISTS metadados JSONB DEFAULT '{}'::jsonb;
+
+UPDATE brain_notes
+SET
+    fonte = COALESCE(fonte, 'input_manual'),
+    confianca = COALESCE(confianca, 0.3),
+    peso_temporal = COALESCE(peso_temporal, 1.0),
+    criado_por = COALESCE(criado_por, source_kind, 'system'),
+    ultima_atualizacao = COALESCE(ultima_atualizacao, updated_at, now()),
+    historico = COALESCE(historico, '[]'::jsonb),
+    metadados = COALESCE(metadados, metadata, '{}'::jsonb);
 
 CREATE UNIQUE INDEX IF NOT EXISTS brain_notes_title_lower_idx ON brain_notes ((lower(title)));
+CREATE INDEX IF NOT EXISTS brain_notes_type_confidence_idx ON brain_notes (type, confianca DESC);
+CREATE INDEX IF NOT EXISTS brain_notes_source_idx ON brain_notes (fonte);
+CREATE INDEX IF NOT EXISTS brain_notes_temporal_weight_idx ON brain_notes (peso_temporal DESC);
+CREATE INDEX IF NOT EXISTS brain_notes_last_updated_idx ON brain_notes (ultima_atualizacao DESC);
 
 CREATE TABLE IF NOT EXISTS brain_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -41,6 +62,21 @@ CREATE TABLE IF NOT EXISTS brain_links (
 CREATE INDEX IF NOT EXISTS brain_links_source_note_idx ON brain_links (source_note_id);
 CREATE INDEX IF NOT EXISTS brain_links_target_note_idx ON brain_links (target_note_id);
 CREATE INDEX IF NOT EXISTS brain_links_target_path_idx ON brain_links (target_path);
+ALTER TABLE brain_links ADD COLUMN IF NOT EXISTS tipo_relacao VARCHAR(50) DEFAULT 'referencia';
+ALTER TABLE brain_links ADD COLUMN IF NOT EXISTS confianca FLOAT DEFAULT 0.3;
+ALTER TABLE brain_links ADD COLUMN IF NOT EXISTS fonte VARCHAR(30) DEFAULT 'input_manual';
+ALTER TABLE brain_links ADD COLUMN IF NOT EXISTS criado_em TIMESTAMPTZ DEFAULT now();
+
+UPDATE brain_links
+SET
+    tipo_relacao = COALESCE(tipo_relacao, relation_type, 'referencia'),
+    confianca = COALESCE(confianca, 0.3),
+    fonte = COALESCE(fonte, 'input_manual'),
+    criado_em = COALESCE(criado_em, created_at, now());
+
+CREATE INDEX IF NOT EXISTS brain_links_relation_type_idx ON brain_links (tipo_relacao);
+CREATE INDEX IF NOT EXISTS brain_links_source_idx ON brain_links (fonte);
+CREATE INDEX IF NOT EXISTS brain_links_confidence_idx ON brain_links (confianca DESC);
 
 CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
