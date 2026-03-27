@@ -83,7 +83,7 @@ export default function App() {
   }, [navigate, reset]);
 
   return (
-    <div className="flex h-full overflow-hidden bg-bg text-text">
+    <div className="flex h-full overflow-hidden text-text">
       {/* ── Sidebar ── */}
       <aside
         className={clsx(
@@ -97,7 +97,9 @@ export default function App() {
           "flex h-14 shrink-0 items-center gap-2.5 overflow-hidden border-b dark:border-white/[0.06] border-black/[0.08]",
           collapsed ? "justify-center px-0" : "px-4"
         )}>
-          <img src="/Hughie.svg" alt="Hughie" className="h-7 w-7 shrink-0 object-contain" />
+          <div className="h-7 w-7 shrink-0 flex items-center justify-center rounded-lg bg-accent-dim border border-accent/30">
+            <img src="/Hughie.svg" alt="Hughie" className="h-5 w-5 object-contain" />
+          </div>
           {!collapsed && (
             <span className="whitespace-nowrap text-[13px] font-semibold text-strong tracking-tight">
               Hughie

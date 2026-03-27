@@ -202,8 +202,8 @@ async def search_notes(
             FROM brain_notes
             WHERE embedding IS NOT NULL
               AND status = 'active'
-              AND (embedding <=> $1) < $3
-            ORDER BY embedding <=> $1, importance DESC, updated_at DESC
+              AND (embedding <=> $1::vector) < $3
+            ORDER BY embedding <=> $1::vector, importance DESC, updated_at DESC
             LIMIT $2
             """,
             embedding,
@@ -225,12 +225,12 @@ async def search_notes_with_distance(
             SELECT
                 id, title, content, type, importance, status, source_kind, metadata,
                 created_at, updated_at,
-                (embedding <=> $1) AS distance
+                (embedding <=> $1::vector) AS distance
             FROM brain_notes
             WHERE embedding IS NOT NULL
               AND status = 'active'
-              AND (embedding <=> $1) < $3
-            ORDER BY embedding <=> $1, importance DESC, updated_at DESC
+              AND (embedding <=> $1::vector) < $3
+            ORDER BY embedding <=> $1::vector, importance DESC, updated_at DESC
             LIMIT $2
             """,
             embedding,

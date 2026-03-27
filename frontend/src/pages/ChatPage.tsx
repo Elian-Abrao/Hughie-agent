@@ -190,7 +190,11 @@ function MessageBubble({ msg }: { msg: Message }) {
             : "border-accent/25 bg-accent-dim text-accent"
         )}
       >
-        {isUser ? "E" : "H"}
+        {isUser ? (
+          "E"
+        ) : (
+          <img src="/Hughie.svg" alt="Hughie" className="h-5 w-5 object-contain" />
+        )}
       </div>
 
       <div className={clsx("flex min-w-0 flex-col gap-2", isUser ? "max-w-[80%] items-end" : "flex-1")}>
