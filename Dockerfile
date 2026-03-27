@@ -10,8 +10,8 @@ COPY pyproject.toml ./
 COPY src/ ./src/
 COPY providers/ ./providers/
 
-RUN pip install --no-cache-dir -e ".[serve]" \
-    && pip install --no-cache-dir uvicorn
+RUN pip install --no-cache-dir ./providers/codex-bridge-sdk \
+    && pip install --no-cache-dir -e ".[serve]"
 
 EXPOSE 8000
 
