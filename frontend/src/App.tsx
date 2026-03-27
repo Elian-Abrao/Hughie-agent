@@ -213,9 +213,10 @@ export default function App() {
                         type="button"
                         title="Excluir conversa"
                         onClick={() => void removeSession(s.session_id)}
-                        className="mr-2 mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-black/[0.06] hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/[0.08]"
+                        className="mr-2 mt-2 flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-muted transition hover:border-red-400 hover:text-red-500 dark:hover:bg-white/[0.04]"
                       >
                         <IconTrash size={12} />
+                        <span>Excluir</span>
                       </button>
                     </div>
                   );

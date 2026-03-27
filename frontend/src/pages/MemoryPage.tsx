@@ -193,9 +193,9 @@ export default function MemoryPage() {
       {/* ── Detail panel ── */}
       {selected && (
         <div className="w-72 flex-shrink-0 border-l border-border bg-surface flex flex-col animate-fadein">
-          <div className="flex items-center justify-between p-4 border-b border-border">
+          <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
             <TypeBadge type={selected.type} />
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {editing ? (
                 <button
                   onClick={() => {
@@ -208,33 +208,37 @@ export default function MemoryPage() {
                       status: selected.status,
                     });
                   }}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-text transition-colors"
+                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface2 hover:text-text transition-colors"
                   title="Cancelar edição"
                 >
                   <IconX size={14} />
+                  <span>Cancelar</span>
                 </button>
               ) : (
                 <button
                   onClick={() => setEditing(true)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-text transition-colors"
+                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface2 hover:text-text transition-colors"
                   title="Editar memória"
                 >
                   <IconEdit size={14} />
+                  <span>Editar</span>
                 </button>
               )}
               <button
                 onClick={() => void handleDelete()}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-red-500 transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:bg-surface2 hover:text-red-500 transition-colors"
                 title="Excluir memória"
               >
                 <IconTrash size={14} />
+                <span>Excluir</span>
               </button>
               <button
                 onClick={() => setSelected(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-text hover:bg-surface2 transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted hover:text-text hover:bg-surface2 transition-colors"
                 title="Fechar"
               >
                 <IconX size={14} />
+                <span>Fechar</span>
               </button>
             </div>
           </div>
@@ -312,6 +316,13 @@ export default function MemoryPage() {
               <Row label="Atualizado"  value={new Date(selected.updated_at).toLocaleDateString("pt-BR")} />
               <p className="font-mono text-[10px] break-all text-muted/60 pt-1">{selected.id}</p>
             </div>
+          </div>
+        </div>
+      )}
+      {!selected && (
+        <div className="hidden w-72 flex-shrink-0 border-l border-border bg-surface lg:flex lg:flex-col">
+          <div className="p-5 text-sm text-muted">
+            Clique em uma nota para abrir as ações de <strong className="text-text">editar</strong> e <strong className="text-text">excluir</strong>.
           </div>
         </div>
       )}
