@@ -1,7 +1,9 @@
 import asyncio
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from hughie.memory.database import get_pool
 from hughie.memory.embeddings import embed_document, embed_query
@@ -14,41 +16,166 @@ class BrainNote:
     content: str
     type: str
     importance: float
+    status: str
+    source_kind: str
+    metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
 
 
-async def save_note(title: str, content: str, note_type: str = "fact", importance: float = 1.0) -> BrainNote:
+def _note_from_row(row) -> BrainNote:
+    data = dict(row)
+    if "id" in data:
+        data["id"] = str(data["id"])
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        data["metadata"] = {}
+    return BrainNote(**data)
+
+
+async def save_note(
+    title: str,
+    content: str,
+    note_type: str = "fact",
+    importance: float = 1.0,
+    *,
+    status: str = "active",
+    source_kind: str = "auto_worker",
+    metadata: dict[str, Any] | None = None,
+) -> BrainNote:
     embedding = embed_document(f"{title}\n{content}")
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO brain_notes (title, content, type, embedding, importance)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, title, content, type, importance, created_at, updated_at
+            INSERT INTO brain_notes (
+                title, content, type, embedding, importance, status, source_kind, metadata
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+            RETURNING
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
             """,
-            title, content, note_type, embedding, importance,
+            title,
+            content,
+            note_type,
+            embedding,
+            importance,
+            status,
+            source_kind,
+            json.dumps(metadata or {}),
         )
-    return BrainNote(**dict(row))
+    return _note_from_row(row)
 
 
-async def update_note(note_id: str, content: str) -> BrainNote | None:
-    embedding = embed_document(content)
+async def update_note(
+    note_id: str,
+    content: str,
+    *,
+    title: str | None = None,
+    note_type: str | None = None,
+    importance: float | None = None,
+    status: str | None = None,
+    source_kind: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> BrainNote | None:
+    embedding = embed_document(f"{title or ''}\n{content}".strip())
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             UPDATE brain_notes
-            SET content = $1, embedding = $2, updated_at = now()
-            WHERE id = $3
-            RETURNING id, title, content, type, importance, created_at, updated_at
+            SET
+                title = COALESCE($1, title),
+                content = $2,
+                type = COALESCE($3, type),
+                importance = COALESCE($4, importance),
+                status = COALESCE($5, status),
+                source_kind = COALESCE($6, source_kind),
+                metadata = COALESCE($7::jsonb, metadata),
+                embedding = $8,
+                updated_at = now()
+            WHERE id = $9
+            RETURNING
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
             """,
-            content, embedding, uuid.UUID(note_id),
+            title,
+            content,
+            note_type,
+            importance,
+            status,
+            source_kind,
+            json.dumps(metadata) if metadata is not None else None,
+            embedding,
+            uuid.UUID(note_id),
         )
     if row is None:
         return None
-    return BrainNote(**dict(row))
+    return _note_from_row(row)
+
+
+async def get_note_by_id(note_id: str) -> BrainNote | None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
+            FROM brain_notes
+            WHERE id = $1
+            """,
+            uuid.UUID(note_id),
+        )
+    if row is None:
+        return None
+    return _note_from_row(row)
+
+
+async def get_note_by_title(title: str) -> BrainNote | None:
+    normalized = title.strip().lower()
+    if not normalized:
+        return None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
+            FROM brain_notes
+            WHERE lower(title) = $1
+            LIMIT 1
+            """,
+            normalized,
+        )
+    if row is None:
+        return None
+    return _note_from_row(row)
+
+
+async def ensure_note_by_title(
+    title: str,
+    *,
+    note_type: str = "fact",
+    source_kind: str = "auto_worker",
+) -> BrainNote | None:
+    existing = await get_note_by_title(title)
+    if existing is not None:
+        return existing
+    cleaned = title.strip()
+    if not cleaned:
+        return None
+    return await save_note(
+        cleaned,
+        f"Stub note created for '{cleaned}'.",
+        note_type,
+        0.2,
+        status="stub",
+        source_kind=source_kind,
+        metadata={"auto_stub": True},
+    )
 
 
 async def delete_note(note_id: str) -> bool:
@@ -61,20 +188,29 @@ async def delete_note(note_id: str) -> bool:
     return result == "DELETE 1"
 
 
-async def search_notes(query: str, limit: int = 5) -> list[BrainNote]:
+async def search_notes(
+    query: str, limit: int = 5, distance_threshold: float = 0.5
+) -> list[BrainNote]:
     embedding = embed_query(query)
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, content, type, importance, created_at, updated_at
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
             FROM brain_notes
-            ORDER BY embedding <=> $1
+            WHERE embedding IS NOT NULL
+              AND status = 'active'
+              AND (embedding <=> $1) < $3
+            ORDER BY embedding <=> $1, importance DESC, updated_at DESC
             LIMIT $2
             """,
-            embedding, limit,
+            embedding,
+            limit,
+            distance_threshold,
         )
-    return [BrainNote(**dict(r)) for r in rows]
+    return [_note_from_row(r) for r in rows]
 
 
 async def search_notes_with_distance(
@@ -86,22 +222,46 @@ async def search_notes_with_distance(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, content, type, importance, created_at, updated_at,
-                   (embedding <=> $1) AS distance
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at,
+                (embedding <=> $1) AS distance
             FROM brain_notes
             WHERE embedding IS NOT NULL
-            ORDER BY embedding <=> $1
+              AND status = 'active'
+              AND (embedding <=> $1) < $3
+            ORDER BY embedding <=> $1, importance DESC, updated_at DESC
             LIMIT $2
             """,
-            embedding, limit,
+            embedding,
+            limit,
+            threshold,
         )
     results = []
-    for r in rows:
-        d = dict(r)
-        distance = d.pop("distance")
-        if distance < threshold:
-            results.append((BrainNote(**d), distance))
+    for row in rows:
+        data = dict(row)
+        distance = data.pop("distance")
+        results.append((_note_from_row(data), distance))
     return results
+
+
+async def get_notes_by_ids(note_ids: list[str]) -> list[BrainNote]:
+    if not note_ids:
+        return []
+    uuids = [uuid.UUID(nid) for nid in note_ids]
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
+            FROM brain_notes
+            WHERE id = ANY($1::uuid[])
+            """,
+            uuids,
+        )
+    return [_note_from_row(r) for r in rows]
 
 
 async def list_notes(limit: int = 50) -> list[BrainNote]:
@@ -109,14 +269,16 @@ async def list_notes(limit: int = 50) -> list[BrainNote]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, title, content, type, importance, created_at, updated_at
+            SELECT
+                id, title, content, type, importance, status, source_kind, metadata,
+                created_at, updated_at
             FROM brain_notes
             ORDER BY updated_at DESC
             LIMIT $1
             """,
             limit,
         )
-    return [BrainNote(**dict(r)) for r in rows]
+    return [_note_from_row(r) for r in rows]
 
 
 # Sync wrappers for use outside async contexts

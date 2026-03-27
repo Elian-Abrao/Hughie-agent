@@ -5,7 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from hughie.config import get_settings
 from hughie.core.state import HughieState
 from hughie.llm.codex_chat_model import CodexChatModel
-from hughie.memory import brain_store, conversation_store
+from hughie.memory import brain_store, conversation_store, link_store
 from hughie.memory.consolidator import maybe_consolidate
 from hughie.tools.brain_tools import BRAIN_TOOLS
 
@@ -41,7 +41,34 @@ async def retrieve_context(state: HughieState) -> dict:
     brain_context = ""
     if notes:
         lines = [f"- [{n.type}] {n.title}: {n.content}" for n in notes]
-        brain_context = "O que você sabe sobre o usuário:\n" + "\n".join(lines)
+
+        links = await link_store.get_links_for_notes([n.id for n in notes], limit=12)
+        connected_note_lines: list[str] = []
+        path_lines: list[str] = []
+        seen_note_ids = {n.id for n in notes}
+        seen_path_targets: set[str] = set()
+
+        for link in links:
+            source_title = link.source_note_title or "nota relacionada"
+            if link.target_kind == "note" and link.target_note_id and link.target_note_id not in seen_note_ids:
+                seen_note_ids.add(link.target_note_id)
+                if link.target_note_title and link.target_note_content:
+                    connected_note_lines.append(
+                        f"- ({link.relation_type} de {source_title}) "
+                        f"[{link.target_note_type or 'fact'}] {link.target_note_title}: {link.target_note_content}"
+                    )
+            elif link.target_kind in {"file", "directory"} and link.target_path and link.target_path not in seen_path_targets:
+                seen_path_targets.add(link.target_path)
+                path_lines.append(
+                    f"- ({link.relation_type} de {source_title}) [{link.target_kind}] {link.target_path}"
+                )
+
+        sections = ["O que você sabe sobre o usuário e o projeto:\n" + "\n".join(lines)]
+        if connected_note_lines:
+            sections.append("Notas conectadas:\n" + "\n".join(connected_note_lines))
+        if path_lines:
+            sections.append("Arquivos e diretórios relacionados:\n" + "\n".join(path_lines))
+        brain_context = "\n\n".join(sections)
 
     # Load conversation history from DB as ordered list
     turns = await conversation_store.get_recent(session_id, limit=20)

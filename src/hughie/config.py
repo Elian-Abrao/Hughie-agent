@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     bridge_model: str = "gpt-5.4"
     bridge_timeout: float = 120.0
 
-    flash_model: str = "gemini-2.5-flash-lite"
+    consolidation_provider: str = "gemini_cli"
+    consolidation_model: str = "gemini-2.5-flash"
+    consolidation_broker_timeout: float = 90.0
+    consolidation_api_fallback_model: str = "gemini-2.0-flash"
     consolidation_batch_size: int = 10
     consolidation_context_turns: int = 3
 
@@ -23,12 +26,19 @@ class Settings(BaseSettings):
         "Seja conciso e direto. Responda em português.\n\n"
         "## Memória\n"
         "- Use save_brain_note para registrar preferências, fatos, projetos ou padrões do usuário.\n"
-        "- Use search_brain_notes para lembrar informações sobre o usuário.\n"
+        "- Use search_brain_notes para busca semântica quando souber o que procura.\n"
+        "- Use list_brain_notes para ver todas as notas disponíveis (útil antes de navegar).\n"
+        "- Use get_brain_note para ler o conteúdo completo e os links de uma nota específica.\n"
+        "- Use explore_brain_graph para navegar o grafo de conhecimento a partir de uma ou mais notas — "
+        "siga os links para descobrir notas, arquivos e diretórios conectados.\n"
         "- Use consolidate_memory quando o usuário compartilhar algo complexo e importante.\n\n"
         "## Sistema\n"
         "- Use shell_exec para executar comandos bash na máquina local.\n"
-        "- Use read_file, write_file, list_dir, find_files para acessar o sistema de arquivos.\n"
-        "- Sempre use essas ferramentas quando o usuário pedir para listar, ler, criar ou executar algo local.\n\n"
+        "- Use read_file, write_file, list_dir, find_files para acessar o sistema de arquivos local.\n"
+        "- Use ssh_exec, ssh_read_file, ssh_write_file, ssh_list_dir para executar comandos e acessar "
+        "arquivos em hosts remotos (ex: 'home-server', servidores de produção). "
+        "Hosts configurados em ~/.ssh/config funcionam diretamente.\n"
+        "- Sempre use essas ferramentas quando o usuário pedir para listar, ler, criar ou executar algo.\n\n"
         "## Web\n"
         "- Use web_search para buscar informações atuais na internet.\n"
         "- Prefira buscar na web quando a pergunta exigir dados recentes ou específicos."
