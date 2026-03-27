@@ -1,4 +1,5 @@
 import asyncio
+import getpass
 import uuid
 from typing import Optional
 
@@ -18,10 +19,15 @@ console = Console()
 async def _chat_session(session_id: str, no_stream: bool) -> None:
     from langchain_core.messages import AIMessageChunk, AIMessage, HumanMessage
     from hughie.core.graph import build_graph
+    from hughie.llm.broker_runtime import ensure_broker_ready
     from hughie.core.nodes import init_llm
     from hughie.memory.database import run_migrations, close_pool
     from hughie.tools.mcp_loader import close_mcp_client
     from hughie.tools.registry import load_all_tools
+
+    broker_started = await ensure_broker_ready()
+    if broker_started:
+        console.print("[dim]llm-broker iniciado automaticamente.[/dim]")
 
     await run_migrations()
     tools = await load_all_tools()
@@ -90,7 +96,7 @@ def chat(
     no_stream: bool = typer.Option(False, "--no-stream", help="Desativar streaming"),
 ):
     """Iniciar conversa interativa com o Hughie."""
-    session_id = session or str(uuid.uuid4())
+    session_id = session or getpass.getuser()
     asyncio.run(_chat_session(session_id, no_stream))
 
 
@@ -158,6 +164,24 @@ def db_migrate():
     console.print("[dim]Rodando migrations...[/dim]")
     run_migrations_sync()
     console.print("[green]Migrations concluídas.[/green]")
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Endereço de bind"),
+    port: int = typer.Option(8000, "--port", "-p", help="Porta"),
+    reload: bool = typer.Option(False, "--reload", help="Hot-reload (dev)"),
+):
+    """Iniciar o servidor HTTP da API do Hughie."""
+    import uvicorn
+    console.print(f"[dim]Iniciando Hughie API em http://{host}:{port}[/dim]")
+    uvicorn.run(
+        "hughie.api.server:app",
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info",
+    )
 
 
 @app.command()
