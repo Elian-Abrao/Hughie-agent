@@ -86,13 +86,15 @@ async def health():
 @app.post("/v1/chat")
 async def chat(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
+    from hughie.config import get_settings
+    settings = get_settings()
     state = {
         "messages": [HumanMessage(content=req.message)],
         "history": [],
         "session_id": session_id,
         "brain_context": "",
     }
-    result = await _graph.ainvoke(state)
+    result = await _graph.ainvoke(state, {"recursion_limit": settings.recursion_limit})
     for msg in reversed(result["messages"]):
         if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
             return {"reply": msg.content, "session_id": session_id}
@@ -102,6 +104,8 @@ async def chat(req: ChatRequest):
 @app.post("/v1/chat/stream")
 async def chat_stream(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
+    from hughie.config import get_settings
+    settings = get_settings()
 
     async def generate():
         # Confirm session_id first so client can track it
@@ -115,7 +119,11 @@ async def chat_stream(req: ChatRequest):
         }
 
         try:
-            async for chunk, metadata in _graph.astream(state, stream_mode="messages"):
+            async for chunk, metadata in _graph.astream(
+                state,
+                stream_mode="messages",
+                config={"recursion_limit": settings.recursion_limit},
+            ):
                 node = metadata.get("langgraph_node", "")
 
                 if (

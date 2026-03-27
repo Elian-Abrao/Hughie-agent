@@ -71,6 +71,7 @@ export default function App() {
         role: t.role,
         content: t.content,
         tools: [],
+        activity: [],
         streaming: false,
         error: false,
       }))

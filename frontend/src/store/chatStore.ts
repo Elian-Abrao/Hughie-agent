@@ -5,6 +5,7 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   tools: string[];
+  activity: string[];
   streaming: boolean;
   error: boolean;
 }

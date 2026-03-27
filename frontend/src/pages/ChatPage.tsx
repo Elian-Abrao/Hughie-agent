@@ -43,8 +43,16 @@ export default function ChatPage() {
 
     const assistantId = uid();
     appendMessages([
-      { id: uid(), role: "user", content: text, tools: [], streaming: false, error: false },
-      { id: assistantId, role: "assistant", content: "", tools: [], streaming: true, error: false },
+      { id: uid(), role: "user", content: text, tools: [], activity: [], streaming: false, error: false },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        tools: [],
+        activity: ["Pensando na melhor forma de responder."],
+        streaming: true,
+        error: false,
+      },
     ]);
     setStreaming(true);
 
@@ -57,13 +65,24 @@ export default function ChatPage() {
           sessionIdRef.current = ev.data.session_id;
           setSessionId(ev.data.session_id);
         } else if (ev.event === "text") {
-          updateMessage(assistantId, (msg) => ({ ...msg, content: msg.content + ev.data.text }));
+          updateMessage(assistantId, (msg) => ({
+            ...msg,
+            content: msg.content + ev.data.text,
+            activity: msg.activity.includes("Gerando resposta.")
+              ? msg.activity
+              : [...msg.activity, "Gerando resposta."],
+          }));
         } else if (ev.event === "tool") {
-          updateMessage(assistantId, (msg) => ({ ...msg, tools: [...msg.tools, ev.data.tool] }));
+          updateMessage(assistantId, (msg) => ({
+            ...msg,
+            tools: [...msg.tools, ev.data.tool],
+            activity: [...msg.activity, `Tool chamada: ${ev.data.tool}`],
+          }));
         } else if (ev.event === "error") {
           updateMessage(assistantId, (msg) => ({
             ...msg,
             content: `Erro: ${ev.data.error}`,
+            activity: [...msg.activity, `Erro: ${ev.data.error}`],
             streaming: false,
             error: true,
           }));
@@ -166,6 +185,9 @@ function EmptyState() {
 
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
+  const [expanded, setExpanded] = useState(false);
+  const showActivity = !isUser && (msg.streaming || msg.activity.length > 0 || msg.tools.length > 0);
+  const activityLabel = msg.streaming ? "pensando..." : "atividade";
 
   return (
     <div className={clsx("flex gap-3 animate-fadein", isUser && "flex-row-reverse")}>
@@ -185,19 +207,6 @@ function MessageBubble({ msg }: { msg: Message }) {
       </div>
 
       <div className={clsx("flex min-w-0 flex-col gap-2", isUser ? "max-w-[80%] items-end" : "flex-1")}>
-        {msg.tools.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {msg.tools.map((tool, index) => (
-              <span
-                key={`${tool}-${index}`}
-                className="inline-flex items-center gap-1.5 rounded-full border border-accent/15 bg-tool-bg px-2.5 py-0.5 font-mono text-[11px] text-tool-text"
-              >
-                <span className="opacity-60">⚙</span> {tool}
-              </span>
-            ))}
-          </div>
-        )}
-
         <div
           className={clsx(
             "rounded-2xl text-sm leading-relaxed",
@@ -222,6 +231,23 @@ function MessageBubble({ msg }: { msg: Message }) {
               ) : null}
               {msg.streaming && msg.content && (
                 <span className="ml-0.5 inline-block h-[0.9em] w-0.5 animate-blink rounded-sm bg-accent align-middle" />
+              )}
+              {showActivity && (
+                <div className="mt-3 border-t border-border/60 pt-2">
+                  <button
+                    onClick={() => setExpanded((value) => !value)}
+                    className="text-xs italic text-muted transition-colors hover:text-text"
+                  >
+                    {expanded ? "ocultar atividade" : activityLabel}
+                  </button>
+                  {expanded && (
+                    <blockquote className="mt-2 space-y-1 border-l-2 border-accent/30 pl-3 text-xs text-muted">
+                      {msg.activity.map((line, index) => (
+                        <p key={`${line}-${index}`}>{">"} {line}</p>
+                      ))}
+                    </blockquote>
+                  )}
+                </div>
               )}
             </>
           )}

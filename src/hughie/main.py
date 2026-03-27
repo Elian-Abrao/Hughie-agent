@@ -18,6 +18,7 @@ console = Console()
 
 async def _chat_session(session_id: str, no_stream: bool) -> None:
     from langchain_core.messages import AIMessageChunk, AIMessage, HumanMessage
+    from hughie.config import get_settings
     from hughie.core.graph import build_graph
     from hughie.llm.broker_runtime import ensure_broker_ready
     from hughie.core.nodes import init_llm
@@ -26,6 +27,7 @@ async def _chat_session(session_id: str, no_stream: bool) -> None:
     from hughie.tools.registry import load_all_tools
 
     broker_started = await ensure_broker_ready()
+    settings = get_settings()
     if broker_started:
         console.print("[dim]llm-broker iniciado automaticamente.[/dim]")
 
@@ -66,13 +68,17 @@ async def _chat_session(session_id: str, no_stream: bool) -> None:
 
             try:
                 if no_stream:
-                    result = await graph.ainvoke(initial_state)
+                    result = await graph.ainvoke(initial_state, {"recursion_limit": settings.recursion_limit})
                     for msg in reversed(result["messages"]):
                         if isinstance(msg, AIMessage) and not getattr(msg, "tool_calls", None):
                             console.print(msg.content)
                             break
                 else:
-                    async for chunk, metadata in graph.astream(initial_state, stream_mode="messages"):
+                    async for chunk, metadata in graph.astream(
+                        initial_state,
+                        stream_mode="messages",
+                        config={"recursion_limit": settings.recursion_limit},
+                    ):
                         if (
                             isinstance(chunk, AIMessageChunk)
                             and metadata.get("langgraph_node") == "chat"

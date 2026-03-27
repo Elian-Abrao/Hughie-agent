@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     bridge_url: str = "http://127.0.0.1:47831"
     bridge_model: str = "gpt-5.4"
     bridge_timeout: float = 120.0
+    recursion_limit: int = 80
 
     consolidation_provider: str = "codex"
     consolidation_model: str = "gpt-5.4"
@@ -47,7 +48,10 @@ class Settings(BaseSettings):
         "- Use ssh_exec, ssh_read_file, ssh_write_file, ssh_list_dir para acessar hosts remotos.\n"
         "  - `tree-dev` → máquina local de Elian (projetos pessoais, desenvolvimento)\n"
         "  - Outros hosts configurados em ~/.ssh/config funcionam diretamente.\n"
-        "- Sempre use essas ferramentas quando o usuário pedir para listar, ler, criar ou executar algo.\n\n"
+        "- Sempre use essas ferramentas quando o usuário pedir para listar, ler, criar ou executar algo.\n"
+        "- Antes de iniciar varreduras amplas, caras ou potencialmente demoradas "
+        "(por exemplo: percorrer muitos projetos, muitas subpastas ou vários arquivos), "
+        "explique rapidamente o plano e peça confirmação do usuário antes de seguir.\n\n"
         "## Web\n"
         "- Use web_search para buscar informações atuais na internet.\n"
         "- Prefira buscar na web quando a pergunta exigir dados recentes ou específicos."
