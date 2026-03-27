@@ -5,12 +5,13 @@ import {
   IconBrain,
   IconChat,
   IconChevron,
+  IconTrash,
   IconGraph,
   IconMoon,
   IconPlus,
   IconSun,
 } from "./components/Icons";
-import { fetchSessionMessages, fetchSessions } from "./api/client";
+import { deleteSession, fetchSessionMessages, fetchSessions } from "./api/client";
 import type { Session } from "./api/client";
 import ChatPage from "./pages/ChatPage";
 import GraphPage from "./pages/GraphPage";
@@ -81,6 +82,18 @@ export default function App() {
     reset();
     window.dispatchEvent(new Event("hughie:sessions-refresh"));
   }, [navigate, reset]);
+
+  const removeSession = useCallback(async (id: string) => {
+    const ok = window.confirm("Excluir esta conversa? Essa ação não pode ser desfeita.");
+    if (!ok) return;
+    const deleted = await deleteSession(id);
+    if (!deleted) return;
+    if (id === sessionId) {
+      navigate("/");
+      reset();
+    }
+    void loadSessions();
+  }, [loadSessions, navigate, reset, sessionId]);
 
   return (
     <div className="flex h-full overflow-hidden text-text">
@@ -169,26 +182,40 @@ export default function App() {
                 sessions.map((s) => {
                   const active = s.session_id === sessionId && location.pathname === "/";
                   return (
-                    <button
+                    <div
                       key={s.session_id}
-                      onClick={() => openSession(s.session_id)}
                       className={clsx(
-                        "w-full rounded-lg px-3 py-2 text-left transition-colors",
+                        "group flex items-start gap-1 rounded-lg transition-colors",
                         active
                           ? "dark:bg-white/[0.09] bg-black/[0.07] text-text"
                           : "text-muted dark:hover:bg-white/[0.05] hover:bg-black/[0.04] hover:text-muted-2"
                       )}
                     >
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span className="truncate font-mono text-[11px] opacity-60">
-                          {s.session_id.slice(0, 10)}
-                        </span>
-                        <span className="shrink-0 text-[10px] opacity-40">{reltime(s.last_at)}</span>
-                      </div>
-                      <p className="truncate text-[11px] leading-snug opacity-70">
-                        {s.last_message}
-                      </p>
-                    </button>
+                      <button
+                        onClick={() => openSession(s.session_id)}
+                        className="min-w-0 flex-1 px-3 py-2 text-left"
+                      >
+                        <div className="mb-0.5 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex items-center gap-1">
+                            <span className="truncate font-mono text-[11px] opacity-60">
+                              {s.session_id.slice(0, 10)}
+                            </span>
+                            <span className="shrink-0 text-[10px] opacity-40">{reltime(s.last_at)}</span>
+                          </div>
+                        </div>
+                        <p className="truncate text-[11px] leading-snug opacity-70">
+                          {s.last_message}
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir conversa"
+                        onClick={() => void removeSession(s.session_id)}
+                        className="mr-2 mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-md opacity-0 transition hover:bg-black/[0.06] hover:text-red-500 group-hover:opacity-100 dark:hover:bg-white/[0.08]"
+                      >
+                        <IconTrash size={12} />
+                      </button>
+                    </div>
                   );
                 })
               )}

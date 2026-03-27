@@ -93,12 +93,39 @@ export async function fetchSessionMessages(sessionId: string): Promise<SessionMe
   return res.json();
 }
 
+export async function deleteSession(sessionId: string): Promise<boolean> {
+  const res = await fetch(`${BASE}/v1/sessions/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
+  return res.ok;
+}
+
 // ── Brain ─────────────────────────────────────────────────────────────────────
 
 export async function fetchNote(id: string): Promise<BrainNote | null> {
   const res = await fetch(`${BASE}/v1/brain/notes/${encodeURIComponent(id)}`);
   if (!res.ok) return null;
   return res.json();
+}
+
+export async function updateNote(
+  id: string,
+  payload: Pick<BrainNote, "title" | "content" | "type" | "importance" | "status">
+): Promise<BrainNote | null> {
+  const res = await fetch(`${BASE}/v1/brain/notes/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function deleteNote(id: string): Promise<boolean> {
+  const res = await fetch(`${BASE}/v1/brain/notes/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  return res.ok;
 }
 
 export async function fetchNotes(noteType = "", limit = 100): Promise<BrainNote[]> {

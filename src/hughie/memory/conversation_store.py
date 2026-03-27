@@ -76,3 +76,19 @@ async def list_sessions(limit: int = 50) -> list[dict]:
             limit,
         )
     return [dict(r) for r in rows]
+
+
+async def delete_session(session_id: str) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "DELETE FROM consolidation_state WHERE session_id = $1",
+                session_id,
+            )
+            result = await conn.execute(
+                "DELETE FROM conversations WHERE session_id = $1",
+                session_id,
+            )
+    deleted = int(result.split()[-1])
+    return deleted > 0

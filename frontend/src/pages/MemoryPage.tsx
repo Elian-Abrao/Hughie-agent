@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { clsx } from "clsx";
-import { fetchNotes, searchNotes } from "../api/client";
+import { deleteNote, fetchNotes, searchNotes, updateNote } from "../api/client";
 import type { BrainNote } from "../api/client";
-import { IconSearch, IconX } from "../components/Icons";
+import { IconCheck, IconEdit, IconSearch, IconTrash, IconX } from "../components/Icons";
 
 const TYPES = ["", "preference", "pattern", "project", "person", "fact"] as const;
 
@@ -27,6 +27,15 @@ export default function MemoryPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [loading, setLoading]       = useState(false);
   const [selected, setSelected]     = useState<BrainNote | null>(null);
+  const [editing, setEditing]       = useState(false);
+  const [saving, setSaving]         = useState(false);
+  const [draft, setDraft]           = useState({
+    title: "",
+    content: "",
+    type: "fact",
+    importance: 1,
+    status: "active",
+  });
 
   const loadAll = useCallback(async (type: string) => {
     setLoading(true);
@@ -46,6 +55,51 @@ export default function MemoryPage() {
   const clearSearch = () => { setQuery(""); loadAll(typeFilter); };
 
   const handleTypeFilter = (type: string) => { setTypeFilter(type); setQuery(""); };
+
+  useEffect(() => {
+    if (!selected) return;
+    setDraft({
+      title: selected.title,
+      content: selected.content,
+      type: selected.type,
+      importance: selected.importance,
+      status: selected.status,
+    });
+    setEditing(false);
+  }, [selected]);
+
+  const refreshVisible = useCallback(async () => {
+    if (query.trim()) {
+      setNotes(await searchNotes(query, 30));
+      return;
+    }
+    setNotes(await fetchNotes(typeFilter, 200));
+  }, [query, typeFilter]);
+
+  const handleDelete = useCallback(async () => {
+    if (!selected) return;
+    const ok = window.confirm("Excluir esta memória? Essa ação não pode ser desfeita.");
+    if (!ok) return;
+    const deleted = await deleteNote(selected.id);
+    if (!deleted) return;
+    setSelected(null);
+    setEditing(false);
+    await refreshVisible();
+  }, [refreshVisible, selected]);
+
+  const handleSave = useCallback(async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const updated = await updateNote(selected.id, draft);
+      if (!updated) return;
+      setSelected(updated);
+      setNotes((prev) => prev.map((note) => (note.id === updated.id ? updated : note)));
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }, [draft, selected]);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -141,16 +195,117 @@ export default function MemoryPage() {
         <div className="w-72 flex-shrink-0 border-l border-border bg-surface flex flex-col animate-fadein">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <TypeBadge type={selected.type} />
-            <button
-              onClick={() => setSelected(null)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-text hover:bg-surface2 transition-colors"
-            >
-              <IconX size={14} />
-            </button>
+            <div className="flex items-center gap-1">
+              {editing ? (
+                <button
+                  onClick={() => {
+                    setEditing(false);
+                    setDraft({
+                      title: selected.title,
+                      content: selected.content,
+                      type: selected.type,
+                      importance: selected.importance,
+                      status: selected.status,
+                    });
+                  }}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-text transition-colors"
+                  title="Cancelar edição"
+                >
+                  <IconX size={14} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-text transition-colors"
+                  title="Editar memória"
+                >
+                  <IconEdit size={14} />
+                </button>
+              )}
+              <button
+                onClick={() => void handleDelete()}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface2 hover:text-red-500 transition-colors"
+                title="Excluir memória"
+              >
+                <IconTrash size={14} />
+              </button>
+              <button
+                onClick={() => setSelected(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:text-text hover:bg-surface2 transition-colors"
+                title="Fechar"
+              >
+                <IconX size={14} />
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <h2 className="text-strong font-semibold leading-snug">{selected.title}</h2>
-            <p className="text-sm text-muted-2 leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+            {editing ? (
+              <>
+                <input
+                  value={draft.title}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-text outline-none focus:border-accent"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={draft.type}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, type: e.target.value }))}
+                    className="rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-text outline-none focus:border-accent"
+                  >
+                    {TYPES.filter(Boolean).map((type) => (
+                      <option key={type} value={type}>
+                        {getMeta(type).label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={draft.status}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, status: e.target.value }))}
+                    className="rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-text outline-none focus:border-accent"
+                  >
+                    <option value="active">Ativa</option>
+                    <option value="stub">Stub</option>
+                    <option value="archived">Arquivada</option>
+                  </select>
+                </div>
+                <label className="block text-xs text-muted">
+                  Importância
+                  <input
+                    type="number"
+                    min="0"
+                    max="3"
+                    step="0.1"
+                    value={draft.importance}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, importance: Number(e.target.value) }))}
+                    className="mt-1 w-full rounded-lg border border-border bg-surface2 px-3 py-2 text-sm text-text outline-none focus:border-accent"
+                  />
+                </label>
+                <textarea
+                  value={draft.content}
+                  onChange={(e) => setDraft((prev) => ({ ...prev, content: e.target.value }))}
+                  rows={12}
+                  className="w-full resize-y rounded-lg border border-border bg-surface2 px-3 py-2 text-sm leading-relaxed text-text outline-none focus:border-accent"
+                />
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={saving || !draft.title.trim() || !draft.content.trim()}
+                  className={clsx(
+                    "flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    saving || !draft.title.trim() || !draft.content.trim()
+                      ? "cursor-not-allowed border-border bg-surface2 text-muted"
+                      : "border-accent bg-accent text-white hover:bg-accent-h"
+                  )}
+                >
+                  <IconCheck size={14} />
+                  {saving ? "Salvando..." : "Salvar memória"}
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-strong font-semibold leading-snug">{selected.title}</h2>
+                <p className="text-sm text-muted-2 leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+              </>
+            )}
             <div className="pt-3 border-t border-border space-y-2 text-xs">
               <Row label="Importância" value={selected.importance.toFixed(1)} />
               <Row label="Status"      value={<span className="capitalize">{selected.status}</span>} />

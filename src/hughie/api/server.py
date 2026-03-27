@@ -68,6 +68,14 @@ class ChatRequest(BaseModel):
     session_id: str = ""
 
 
+class NoteUpdateRequest(BaseModel):
+    title: str
+    content: str
+    type: str
+    importance: float = 1.0
+    status: str = "active"
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
@@ -147,6 +155,38 @@ async def get_note(note_id: str):
         "content": note.content,
         "updated_at": note.updated_at.isoformat(),
     }
+
+
+@app.patch("/v1/brain/notes/{note_id}")
+async def update_note(note_id: str, req: NoteUpdateRequest):
+    note = await brain_store.update_note(
+        note_id,
+        req.content,
+        title=req.title,
+        note_type=req.type,
+        importance=req.importance,
+        status=req.status,
+        source_kind="manual_admin",
+    )
+    if note is None:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return {
+        "id": note.id,
+        "title": note.title,
+        "type": note.type,
+        "importance": note.importance,
+        "status": note.status,
+        "content": note.content,
+        "updated_at": note.updated_at.isoformat(),
+    }
+
+
+@app.delete("/v1/brain/notes/{note_id}")
+async def delete_note(note_id: str):
+    deleted = await brain_store.delete_note(note_id)
+    if not deleted:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return {"ok": True}
 
 
 @app.get("/v1/brain/notes")
@@ -245,3 +285,11 @@ async def get_session_messages(session_id: str):
         }
         for t in turns
     ]
+
+
+@app.delete("/v1/sessions/{session_id}")
+async def delete_session(session_id: str):
+    deleted = await conversation_store.delete_session(session_id)
+    if not deleted:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return {"ok": True}
