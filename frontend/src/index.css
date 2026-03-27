@@ -6,46 +6,46 @@
 
 :root {
   color-scheme: dark;
-  --grid-dot: rgba(255,255,255,0.07);
-  --bg: 38 38 36;
-  --surface: 44 44 41;
-  --surface2: 52 52 49;
+  --grid-dot: rgba(255,255,255,0.11);
+  --bg: 32 32 30;
+  --surface: 40 40 37;
+  --surface2: 50 50 46;
   --surface3: 61 61 57;
-  --border: 102 88 71;
-  --border-2: 130 109 84;
+  --border: 90 76 60;
+  --border-2: 120 100 77;
   --accent: 216 108 27;
   --accent-h: 200 96 20;
   --accent-dim: 57 49 41;
-  --text: 237 229 217;
-  --text-strong: 247 241 232;
-  --muted: 176 160 140;
-  --muted-2: 210 196 179;
-  --user-bg: 49 43 37;
-  --user-border: 108 87 63;
-  --tool-bg: 51 46 41;
-  --tool-text: 216 181 146;
+  --text: 232 224 212;
+  --text-strong: 250 245 238;
+  --muted: 160 144 125;
+  --muted-2: 200 186 168;
+  --user-bg: 45 40 33;
+  --user-border: 100 82 58;
+  --tool-bg: 48 43 37;
+  --tool-text: 210 175 138;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --grid-dot: rgba(0,0,0,0.07);
-  --bg: 244 239 230;
-  --surface: 250 246 240;
-  --surface2: 239 233 224;
-  --surface3: 231 223 213;
-  --border: 193 171 145;
-  --border-2: 164 138 109;
-  --accent: 201 98 25;
-  --accent-h: 182 84 18;
-  --accent-dim: 238 223 205;
-  --text: 63 50 37;
-  --text-strong: 40 30 20;
-  --muted: 125 104 82;
-  --muted-2: 97 80 61;
-  --user-bg: 236 225 210;
-  --user-border: 193 171 145;
-  --tool-bg: 239 233 224;
-  --tool-text: 137 91 49;
+  --grid-dot: rgba(0,0,0,0.10);
+  --bg: 242 237 228;
+  --surface: 249 245 238;
+  --surface2: 237 231 221;
+  --surface3: 228 220 208;
+  --border: 180 158 132;
+  --border-2: 152 127 99;
+  --accent: 195 92 20;
+  --accent-h: 175 78 15;
+  --accent-dim: 235 218 198;
+  --text: 45 34 22;
+  --text-strong: 25 18 10;
+  --muted: 108 88 66;
+  --muted-2: 78 62 45;
+  --user-bg: 233 222 206;
+  --user-border: 180 158 132;
+  --tool-bg: 237 231 221;
+  --tool-text: 130 84 42;
 }
 
 html, body, #root {

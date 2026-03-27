@@ -28,14 +28,11 @@ export default function GraphPage() {
   const [noteDetail, setNoteDetail]   = useState<BrainNote | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
   const [loading, setLoading]         = useState(true);
-  const [counts, setCounts]           = useState({ nodes: 0, edges: 0 });
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchBrainGraph();
       setGraphData(data);
-      setCounts({ nodes: data.nodes.length, edges: data.edges.length });
     } finally {
       setLoading(false);
     }
@@ -124,33 +121,6 @@ export default function GraphPage() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="h-12 flex items-center justify-between px-5 border-b dark:border-white/[0.07] border-black/[0.09] flex-shrink-0 bg-surface/50 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-text">Grafo de memória</span>
-          {!loading && (
-            <span className="text-xs text-muted">
-              {counts.nodes} nó{counts.nodes !== 1 ? "s" : ""} · {counts.edges} lig{counts.edges !== 1 ? "ações" : "ação"}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-3">
-            {Object.entries(TYPE_COLOR).map(([type, color]) => (
-              <div key={type} className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full" style={{ background: color }} />
-                <span className="text-[11px] text-muted capitalize">{type}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={load}
-            className="text-xs text-muted hover:text-text transition-colors px-2 py-1 rounded-md dark:hover:bg-white/[0.06] hover:bg-black/[0.05]"
-          >
-            Atualizar
-          </button>
-        </div>
-      </div>
 
       {/* Canvas */}
       <div className="flex-1 relative overflow-hidden">

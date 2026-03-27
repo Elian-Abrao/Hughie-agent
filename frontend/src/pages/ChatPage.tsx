@@ -90,19 +90,6 @@ export default function ChatPage() {
   return (
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="h-12 flex items-center justify-between border-b border-border bg-surface px-5">
-          <div className="min-w-0">
-            <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Chat</span>
-            <span className="block truncate font-mono text-xs text-muted-2">
-              {sessionId ? `sess: ${sessionId.slice(0, 18)}` : "nova sessão"}
-            </span>
-          </div>
-          {streaming ? (
-            <span className="text-xs text-accent">pensando…</span>
-          ) : (
-            <span className="text-xs text-muted">Hughie</span>
-          )}
-        </div>
 
         <div className="flex-1 overflow-y-auto py-8">
           {messages.length === 0 ? (
