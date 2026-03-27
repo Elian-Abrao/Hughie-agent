@@ -39,6 +39,35 @@ _WRITE_PATTERNS = (
 )
 
 
+def _extract_scope_dir(command: str, working_dir: str) -> str | None:
+    if working_dir:
+        return working_dir
+    cmd = command.strip()
+    if cmd.startswith("cd "):
+        remainder = cmd[3:]
+        scope = remainder.split("&&", 1)[0].strip()
+        parts = shlex.split(scope) if scope else []
+        return parts[0] if parts else None
+    return None
+
+
+def _describe_remote_command(host: str, command: str, working_dir: str) -> tuple[str, str, str | None]:
+    scope_dir = _extract_scope_dir(command, working_dir)
+    cmd = command.strip()
+    if any(re.search(pattern, cmd) for pattern in _WRITE_PATTERNS):
+        message = f"Hughie quer alterar arquivos em [{host}]"
+    elif "python" in cmd or "find " in cmd or "rg " in cmd or "glob" in cmd or "os.walk" in cmd:
+        message = f"Hughie quer analisar arquivos em [{host}]"
+    else:
+        message = f"Hughie quer executar um comando avançado em [{host}]"
+
+    if scope_dir:
+        message += f" dentro de:\n{scope_dir}\n\nSe você autorizar, ele pode continuar trabalhando nesse diretório sem pedir confirmação a cada passo."
+        return message, "Autorizar neste diretório", f"ssh_exec_prefix|{host}|{scope_dir}"
+
+    return message, "Autorizar comando remoto", None
+
+
 def _ssh_base(host: str) -> list[str]:
     return [
         "ssh",
@@ -103,11 +132,13 @@ async def ssh_exec(host: str, command: str, working_dir: str = "") -> str:
     full_command = f"cd {shlex.quote(working_dir)} && {command}" if working_dir else command
 
     if not _is_read_only(command):
+        prompt, approve_label, scope_key = _describe_remote_command(host, command, working_dir)
         confirmed = await confirm_or_raise(
             action_key=f"ssh_exec:{host}:{working_dir}:{command}",
-            prompt=f"⚠️  Hughie quer executar em [{host}]:\n  {full_command}",
-            approve_label="Autorizar comando remoto",
+            prompt=prompt,
+            approve_label=approve_label,
             reject_label="Negar comando remoto",
+            scope_key=scope_key,
         )
         if not confirmed:
             return "Comando cancelado pelo usuário."
@@ -139,9 +170,13 @@ async def ssh_write_file(host: str, path: str, content: str) -> str:
     """
     confirmed = await confirm_or_raise(
         action_key=f"ssh_write_file:{host}:{path}",
-        prompt=f"⚠️  Hughie quer escrever {len(content)} chars em [{host}]:\n  {path}",
-        approve_label="Autorizar escrita remota",
+        prompt=(
+            f"Hughie quer escrever um arquivo em [{host}] dentro de:\n{path.rsplit('/', 1)[0] if '/' in path else path}\n\n"
+            "Se você autorizar, ele pode continuar gravando nesse diretório sem pedir de novo agora."
+        ),
+        approve_label="Autorizar neste diretório",
         reject_label="Negar escrita remota",
+        scope_key=f"ssh_write_prefix|{host}|{path.rsplit('/', 1)[0] if '/' in path else path}",
     )
     if not confirmed:
         return "Cancelado pelo usuário."

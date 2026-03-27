@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -17,9 +18,11 @@ class ApprovalRequired(GraphBubbleUp):
     message: str
     approve_label: str = "Autorizar"
     reject_label: str = "Negar"
+    scope_key: str | None = None
 
 
 _decisions: dict[str, dict[str, bool]] = {}
+_scope_approvals: dict[str, set[str]] = {}
 
 
 @contextmanager
@@ -45,6 +48,34 @@ def register_decision(session_id: str, action_key: str, approved: bool) -> None:
     _decisions.setdefault(session_id, {})[action_key] = approved
 
 
+def grant_scope(session_id: str, scope_key: str) -> None:
+    _scope_approvals.setdefault(session_id, set()).add(scope_key)
+
+
+def _path_scope_matches(granted: str, requested: str) -> bool:
+    granted_parts = granted.split("|")
+    requested_parts = requested.split("|")
+    if len(granted_parts) != len(requested_parts):
+        return False
+    if granted_parts[:-1] != requested_parts[:-1]:
+        return False
+    try:
+        return os.path.commonpath([requested_parts[-1], granted_parts[-1]]) == granted_parts[-1]
+    except ValueError:
+        return False
+
+
+def has_scope_approval(session_id: str, scope_key: str | None) -> bool:
+    if not scope_key:
+        return False
+    granted_scopes = _scope_approvals.get(session_id, set())
+    if scope_key in granted_scopes:
+        return True
+    if "_prefix|" not in scope_key:
+        return False
+    return any(_path_scope_matches(granted, scope_key) for granted in granted_scopes)
+
+
 def consume_decision(session_id: str, action_key: str) -> bool | None:
     decisions = _decisions.get(session_id)
     if not decisions or action_key not in decisions:
@@ -61,11 +92,14 @@ async def confirm_or_raise(
     prompt: str,
     approve_label: str = "Autorizar",
     reject_label: str = "Negar",
+    scope_key: str | None = None,
 ) -> bool:
     session_id = current_session_id()
     mode = current_approval_mode()
 
     if session_id:
+        if has_scope_approval(session_id, scope_key):
+            return True
         existing = consume_decision(session_id, action_key)
         if existing is not None:
             return existing
@@ -76,6 +110,7 @@ async def confirm_or_raise(
             message=prompt,
             approve_label=approve_label,
             reject_label=reject_label,
+            scope_key=scope_key,
         )
 
     loop = asyncio.get_event_loop()

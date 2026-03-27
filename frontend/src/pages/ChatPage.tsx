@@ -233,7 +233,8 @@ export default function ChatPage() {
         <div className="border-t border-border/50 bg-surface px-5 pb-5 pt-3">
           {pendingApproval && pendingApproval.sessionId === sessionId && (
             <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent/25 bg-accent-dim/60 px-4 py-3">
-              <p className="text-sm text-text">{pendingApproval.message}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Autorização</p>
+              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-text">{pendingApproval.message}</p>
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={() => void handleDecision(pendingApproval.approveDecision)}

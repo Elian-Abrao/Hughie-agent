@@ -37,6 +37,35 @@ _WRITE_PATTERNS = (
 )
 
 
+def _extract_scope_dir(command: str, working_dir: str) -> str | None:
+    if working_dir:
+        return working_dir
+    cmd = command.strip()
+    if cmd.startswith("cd "):
+        remainder = cmd[3:]
+        scope = remainder.split("&&", 1)[0].strip()
+        parts = shlex.split(scope) if scope else []
+        return parts[0] if parts else None
+    return None
+
+
+def _describe_sensitive_command(command: str, working_dir: str) -> tuple[str, str, str | None]:
+    scope_dir = _extract_scope_dir(command, working_dir)
+    cmd = command.strip()
+    if any(re.search(pattern, cmd) for pattern in _WRITE_PATTERNS):
+        message = "Hughie quer alterar arquivos locais"
+    elif "python" in cmd or "find " in cmd or "rg " in cmd or "glob" in cmd or "os.walk" in cmd:
+        message = "Hughie quer analisar arquivos locais"
+    else:
+        message = "Hughie quer executar um comando local avançado"
+
+    if scope_dir:
+        message += f" em:\n{scope_dir}\n\nSe você autorizar, ele poderá continuar neste diretório sem pedir confirmação a cada passo."
+        return message, "Autorizar neste diretório", f"shell_exec_prefix|{scope_dir}"
+
+    return message, "Autorizar comando", None
+
+
 def _is_read_only(command: str) -> bool:
     cmd = command.strip()
     if any(re.search(pattern, cmd) for pattern in _WRITE_PATTERNS):
@@ -62,12 +91,13 @@ async def shell_exec(command: str, working_dir: str = "") -> str:
         working_dir: Optional working directory (absolute path)
     """
     if not _is_read_only(command):
-        display_command = f"cd {shlex.quote(working_dir)} && {command}" if working_dir else command
+        prompt, approve_label, scope_key = _describe_sensitive_command(command, working_dir)
         confirmed = await confirm_or_raise(
             action_key=f"shell_exec:{working_dir}:{command}",
-            prompt=f"⚠️  Hughie quer executar:\n  {display_command}",
-            approve_label="Autorizar comando",
+            prompt=prompt,
+            approve_label=approve_label,
             reject_label="Negar comando",
+            scope_key=scope_key,
         )
         if not confirmed:
             return "Command cancelled by user."

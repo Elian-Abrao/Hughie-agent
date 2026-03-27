@@ -12,6 +12,7 @@ Endpoints:
 import asyncio
 import json
 import logging
+import re
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any
@@ -23,7 +24,8 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from hughie.approvals import ApprovalRequired, approval_context, register_decision
+from hughie.approvals import ApprovalRequired, approval_context, grant_scope, register_decision
+from hughie.config import get_settings
 from hughie.core.graph import build_graph
 from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
@@ -164,6 +166,52 @@ def _approval_event(
     }
 
 
+def _extract_candidate_paths(message: str, prefixes: list[str]) -> list[str]:
+    paths = re.findall(r"(/[^\s\"'`]+)", message)
+    seen: list[str] = []
+    for path in paths:
+        normalized = path.rstrip(".,:;)")
+        if any(normalized.startswith(prefix) for prefix in prefixes) and normalized not in seen:
+            seen.append(normalized)
+    return seen[:4]
+
+
+def _maybe_build_preflight_approval(message: str, session_id: str) -> dict[str, Any] | None:
+    settings = get_settings()
+    lowered = message.lower()
+    broad_keywords = ("todos", "todas", "subpastas", "varra", "busque", "procure", "analise", "entenda", "mapeie", "navegue", "percorra")
+    if not any(keyword in lowered for keyword in broad_keywords):
+        return None
+
+    candidate_paths = _extract_candidate_paths(message, settings.local_machine_path_prefixes)
+    if not candidate_paths:
+        return None
+
+    scope_keys: list[str] = []
+    lines: list[str] = []
+    for path in candidate_paths:
+        scope_keys.append(f"ssh_exec_prefix|{settings.local_machine_host}|{path}")
+        lines.append(f"- analisar arquivos e subpastas em `{path}`")
+
+    _pending_chats[session_id] = {
+        "type": "preflight_permissions",
+        "message": message,
+        "scope_keys": scope_keys,
+    }
+    return _approval_event(
+        session_id=session_id,
+        message=(
+            "Para fazer isso direito, Hughie provavelmente vai precisar:\n"
+            + "\n".join(lines)
+            + "\n\nSe você autorizar agora, ele pode seguir nesses diretórios sem te interromper a cada comando."
+        ),
+        approve_label="Autorizar acesso inicial",
+        reject_label="Responder sem acessar",
+        approve_decision="approve",
+        reject_decision="deny",
+    )
+
+
 async def _stream_chat_run(
     *,
     state: dict[str, Any],
@@ -228,6 +276,7 @@ async def _stream_chat_run(
             "type": "tool_confirmation",
             "message": original_message,
             "action_key": approval.action_key,
+            "scope_key": approval.scope_key,
             "approve_label": approval.approve_label,
             "reject_label": approval.reject_label,
             "approval_message": approval.message,
@@ -252,6 +301,11 @@ async def chat_stream(req: ChatRequest):
     async def generate():
         # Confirm session_id first so client can track it
         yield {"event": "session", "data": json.dumps({"session_id": session_id})}
+        preflight = _maybe_build_preflight_approval(req.message, session_id)
+        if preflight is not None:
+            yield preflight
+            yield {"event": "done", "data": "{}"}
+            return
         state = _build_chat_state(req.message, session_id)
 
         try:
@@ -291,6 +345,8 @@ async def chat_decision_stream(req: ChatDecisionRequest):
     if pending["type"] == "tool_confirmation":
         approved = decision == "approve"
         register_decision(req.session_id, pending["action_key"], approved)
+        if approved and pending.get("scope_key"):
+            grant_scope(req.session_id, pending["scope_key"])
         if approved:
             message = (
                 f"{message}\n\n"
@@ -306,6 +362,25 @@ async def chat_decision_stream(req: ChatDecisionRequest):
             )
         recursion_limit = settings.recursion_limit
         allow_pause = True
+    elif pending["type"] == "preflight_permissions":
+        if decision == "approve":
+            for scope_key in pending.get("scope_keys", []):
+                grant_scope(req.session_id, scope_key)
+            message = (
+                f"{message}\n\n"
+                "IMPORTANTE: o usuário já autorizou o acesso inicial aos diretórios citados. "
+                "Você pode seguir com leitura, análise e comandos nesses diretórios sem pedir de novo a cada passo."
+            )
+            recursion_limit = settings.recursion_limit
+            allow_pause = True
+        else:
+            message = (
+                f"{message}\n\n"
+                "IMPORTANTE: o usuário preferiu não autorizar um acesso inicial amplo. "
+                "Responda com o que for possível sem navegar nesses diretórios e peça algo mais específico se realmente precisar."
+            )
+            recursion_limit = max(12, settings.recursion_limit // 2)
+            allow_pause = False
     elif decision == "respond_now":
         message = (
             f"{message}\n\n"

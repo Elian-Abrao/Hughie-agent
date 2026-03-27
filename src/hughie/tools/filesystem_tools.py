@@ -50,9 +50,13 @@ async def write_file(path: str, content: str) -> str:
     action_key = f"write_file:{p}"
     confirmed = await confirm_or_raise(
         action_key=action_key,
-        prompt=f"⚠️  Hughie quer {action} o arquivo:\n  {p}",
-        approve_label="Autorizar escrita",
+        prompt=(
+            f"Hughie quer {action} um arquivo em:\n{p.parent}\n\n"
+            "Se você autorizar, ele pode continuar gravando neste diretório sem pedir de novo agora."
+        ),
+        approve_label="Autorizar neste diretório",
         reject_label="Negar escrita",
+        scope_key=f"write_file_prefix|{p.parent}",
     )
     if not confirmed:
         return "Write cancelled by user."
