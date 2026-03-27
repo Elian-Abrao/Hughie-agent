@@ -14,6 +14,7 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +34,7 @@ from hughie.tools.registry import load_all_tools
 logger = logging.getLogger(__name__)
 
 _graph = None
+_pending_chats: dict[str, dict[str, Any]] = {}
 
 
 @asynccontextmanager
@@ -68,6 +70,11 @@ class ChatRequest(BaseModel):
     session_id: str = ""
 
 
+class ChatDecisionRequest(BaseModel):
+    session_id: str
+    decision: str
+
+
 class NoteUpdateRequest(BaseModel):
     title: str
     content: str
@@ -101,6 +108,86 @@ async def chat(req: ChatRequest):
     return {"reply": "", "session_id": session_id}
 
 
+def _build_chat_state(message: str, session_id: str) -> dict[str, Any]:
+    return {
+        "messages": [HumanMessage(content=message)],
+        "history": [],
+        "session_id": session_id,
+        "brain_context": "",
+    }
+
+
+def _build_approval_message(original_message: str, tools_used: list[str]) -> str:
+    tool_summary = ", ".join(tools_used[-4:]) if tools_used else "fazer mais navegação e leitura"
+    return (
+        "Estou perto do limite desta rodada e ainda quero continuar a investigação. "
+        f"Próximo passo provável: {tool_summary}. "
+        "Quer que eu continue navegando ou prefere que eu responda agora com o que já consegui levantar?"
+    )
+
+
+async def _stream_chat_run(
+    *,
+    state: dict[str, Any],
+    session_id: str,
+    recursion_limit: int,
+    allow_pause: bool,
+):
+    prev_node = ""
+    step_count = 0
+    tools_used: list[str] = []
+    approval_threshold = max(1, recursion_limit - 2)
+
+    async for chunk, metadata in _graph.astream(
+        state,
+        stream_mode="messages",
+        config={"recursion_limit": recursion_limit},
+    ):
+        node = metadata.get("langgraph_node", "")
+        if node and node != prev_node:
+            prev_node = node
+            step_count += 1
+
+            if allow_pause and node == "tools" and step_count >= approval_threshold:
+                original_message = ""
+                for msg in state["messages"]:
+                    if isinstance(msg, HumanMessage):
+                        original_message = str(msg.content)
+                        break
+
+                _pending_chats[session_id] = {
+                    "message": original_message,
+                    "tools": list(tools_used),
+                    "recursion_limit": recursion_limit,
+                }
+                yield {
+                    "event": "approval",
+                    "data": json.dumps(
+                        {
+                            "session_id": session_id,
+                            "message": _build_approval_message(original_message, tools_used),
+                            "continue_label": "Continuar",
+                            "respond_now_label": "Responder agora",
+                        }
+                    ),
+                }
+                return
+
+        if (
+            isinstance(chunk, AIMessageChunk)
+            and node == "chat"
+            and chunk.content
+            and not getattr(chunk, "tool_call_chunks", None)
+        ):
+            yield {"event": "text", "data": json.dumps({"text": chunk.content})}
+
+        elif node == "tools":
+            tool_name = getattr(chunk, "name", None)
+            if tool_name:
+                tools_used.append(tool_name)
+                yield {"event": "tool", "data": json.dumps({"tool": tool_name})}
+
+
 @app.post("/v1/chat/stream")
 async def chat_stream(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
@@ -110,38 +197,66 @@ async def chat_stream(req: ChatRequest):
     async def generate():
         # Confirm session_id first so client can track it
         yield {"event": "session", "data": json.dumps({"session_id": session_id})}
-
-        state = {
-            "messages": [HumanMessage(content=req.message)],
-            "history": [],
-            "session_id": session_id,
-            "brain_context": "",
-        }
+        state = _build_chat_state(req.message, session_id)
 
         try:
-            async for chunk, metadata in _graph.astream(
-                state,
-                stream_mode="messages",
-                config={"recursion_limit": settings.recursion_limit},
+            async for event in _stream_chat_run(
+                state=state,
+                session_id=session_id,
+                recursion_limit=settings.recursion_limit,
+                allow_pause=True,
             ):
-                node = metadata.get("langgraph_node", "")
-
-                if (
-                    isinstance(chunk, AIMessageChunk)
-                    and node == "chat"
-                    and chunk.content
-                    and not getattr(chunk, "tool_call_chunks", None)
-                ):
-                    yield {"event": "text", "data": json.dumps({"text": chunk.content})}
-
-                elif node == "tools":
-                    # Notify client that a tool is running
-                    tool_name = getattr(chunk, "name", None)
-                    if tool_name:
-                        yield {"event": "tool", "data": json.dumps({"tool": tool_name})}
+                yield event
 
         except Exception as exc:
             logger.exception("Erro no stream de chat: %s", exc)
+            yield {"event": "error", "data": json.dumps({"error": str(exc)})}
+
+        yield {"event": "done", "data": "{}"}
+
+    return EventSourceResponse(generate())
+
+
+@app.post("/v1/chat/decision/stream")
+async def chat_decision_stream(req: ChatDecisionRequest):
+    from hughie.config import get_settings
+
+    settings = get_settings()
+    pending = _pending_chats.get(req.session_id)
+    if pending is None:
+        return JSONResponse(status_code=404, content={"detail": "No pending approval for this session"})
+
+    decision = req.decision.strip().lower()
+    if decision not in {"continue", "respond_now"}:
+        return JSONResponse(status_code=400, content={"detail": "Invalid decision"})
+
+    message = pending["message"]
+    _pending_chats.pop(req.session_id, None)
+
+    if decision == "respond_now":
+        message = (
+            f"{message}\n\n"
+            "IMPORTANTE: pare a exploração extensa e responda agora usando somente o que já for possível concluir. "
+            "Se algo ainda depender de investigação adicional, diga isso de forma breve."
+        )
+        recursion_limit = max(12, settings.recursion_limit // 2)
+        allow_pause = False
+    else:
+        recursion_limit = settings.recursion_limit * 2
+        allow_pause = True
+
+    async def generate():
+        yield {"event": "session", "data": json.dumps({"session_id": req.session_id})}
+        try:
+            async for event in _stream_chat_run(
+                state=_build_chat_state(message, req.session_id),
+                session_id=req.session_id,
+                recursion_limit=recursion_limit,
+                allow_pause=allow_pause,
+            ):
+                yield event
+        except Exception as exc:
+            logger.exception("Erro no stream de decisão: %s", exc)
             yield {"event": "error", "data": json.dumps({"error": str(exc)})}
 
         yield {"event": "done", "data": "{}"}

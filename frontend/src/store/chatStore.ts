@@ -10,19 +10,30 @@ export interface Message {
   error: boolean;
 }
 
+export interface PendingApproval {
+  assistantId: string;
+  sessionId: string;
+  message: string;
+  continueLabel: string;
+  respondNowLabel: string;
+}
+
 interface ChatStore {
   sessionId: string;
   messages: Message[];
+  pendingApproval: PendingApproval | null;
   setSessionId: (id: string) => void;
   setMessages: (msgs: Message[]) => void;
   appendMessages: (msgs: Message[]) => void;
   updateMessage: (id: string, updater: (m: Message) => Message) => void;
+  setPendingApproval: (approval: PendingApproval | null) => void;
   reset: () => void;
 }
 
 export const useChatStore = create<ChatStore>((set) => ({
   sessionId: "",
   messages: [],
+  pendingApproval: null,
 
   setSessionId: (id) => set({ sessionId: id }),
 
@@ -36,5 +47,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       messages: s.messages.map((m) => (m.id === id ? updater(m) : m)),
     })),
 
-  reset: () => set({ sessionId: "", messages: [] }),
+  setPendingApproval: (pendingApproval) => set({ pendingApproval }),
+
+  reset: () => set({ sessionId: "", messages: [], pendingApproval: null }),
 }));

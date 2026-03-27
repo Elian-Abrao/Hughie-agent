@@ -29,6 +29,15 @@ export type StreamEvent =
   | { event: "session"; data: { session_id: string } }
   | { event: "text"; data: { text: string } }
   | { event: "tool"; data: { tool: string } }
+  | {
+      event: "approval";
+      data: {
+        session_id: string;
+        message: string;
+        continue_label: string;
+        respond_now_label: string;
+      };
+    }
   | { event: "error"; data: { error: string } }
   | { event: "done"; data: Record<string, never> };
 
@@ -43,6 +52,51 @@ export async function* streamChat(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, session_id: sessionId }),
+    signal,
+  });
+
+  if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop()!;
+
+    for (const line of lines) {
+      if (line.startsWith("event: ")) {
+        eventName = line.slice(7).trim();
+      } else if (line.startsWith("data: ")) {
+        const raw = line.slice(6).trim();
+        if (!raw || raw === "[DONE]") continue;
+        try {
+          const data = JSON.parse(raw);
+          if (eventName) yield { event: eventName, data } as StreamEvent;
+        } catch {
+          // ignore malformed SSE
+        }
+        eventName = null;
+      }
+    }
+  }
+}
+
+export async function* streamChatDecision(
+  sessionId: string,
+  decision: "continue" | "respond_now",
+  signal?: AbortSignal
+): AsyncGenerator<StreamEvent> {
+  const res = await fetch(`${BASE}/v1/chat/decision/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, decision }),
     signal,
   });
 

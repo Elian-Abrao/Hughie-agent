@@ -27,7 +27,7 @@ const NAV = [
 export default function App() {
   const location  = useLocation();
   const navigate  = useNavigate();
-  const { sessionId, setMessages, setSessionId, reset } = useChatStore();
+  const { sessionId, setMessages, setSessionId, setPendingApproval, reset } = useChatStore();
 
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar-collapsed") === "true"
@@ -76,7 +76,8 @@ export default function App() {
         error: false,
       }))
     );
-  }, [navigate, setMessages, setSessionId]);
+    setPendingApproval(null);
+  }, [navigate, setMessages, setPendingApproval, setSessionId]);
 
   const newSession = useCallback(() => {
     navigate("/");

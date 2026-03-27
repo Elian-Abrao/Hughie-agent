@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { streamChat } from "../api/client";
+import { streamChat, streamChatDecision } from "../api/client";
 import { MarkdownContent } from "../components/MarkdownContent";
 import { IconSend } from "../components/Icons";
 import { useChatStore } from "../store/chatStore";
@@ -11,7 +11,15 @@ function uid() {
 }
 
 export default function ChatPage() {
-  const { sessionId, messages, setSessionId, appendMessages, updateMessage } = useChatStore();
+  const {
+    sessionId,
+    messages,
+    pendingApproval,
+    setSessionId,
+    appendMessages,
+    updateMessage,
+    setPendingApproval,
+  } = useChatStore();
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -78,6 +86,21 @@ export default function ChatPage() {
             tools: [...msg.tools, ev.data.tool],
             activity: [...msg.activity, `Tool chamada: ${ev.data.tool}`],
           }));
+        } else if (ev.event === "approval") {
+          setPendingApproval({
+            assistantId,
+            sessionId: ev.data.session_id,
+            message: ev.data.message,
+            continueLabel: ev.data.continue_label,
+            respondNowLabel: ev.data.respond_now_label,
+          });
+          updateMessage(assistantId, (msg) => ({
+            ...msg,
+            streaming: false,
+            activity: [...msg.activity, ev.data.message],
+          }));
+          setStreaming(false);
+          break;
         } else if (ev.event === "error") {
           updateMessage(assistantId, (msg) => ({
             ...msg,
@@ -104,7 +127,85 @@ export default function ChatPage() {
     setStreaming(false);
     window.dispatchEvent(new Event("hughie:sessions-refresh"));
     textareaRef.current?.focus();
-  }, [appendMessages, input, setSessionId, streaming, updateMessage]);
+  }, [appendMessages, input, setPendingApproval, setSessionId, streaming, updateMessage]);
+
+  const handleDecision = useCallback(async (decision: "continue" | "respond_now") => {
+    if (!pendingApproval || streaming) return;
+
+    setPendingApproval(null);
+    setStreaming(true);
+    updateMessage(pendingApproval.assistantId, (msg) => ({
+      ...msg,
+      streaming: true,
+      activity: [
+        ...msg.activity,
+        decision === "continue"
+          ? "Usuário autorizou continuar a investigação."
+          : "Usuário pediu para responder imediatamente.",
+      ],
+    }));
+
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
+    try {
+      for await (const ev of streamChatDecision(pendingApproval.sessionId, decision, ctrl.signal)) {
+        if (ev.event === "text") {
+          updateMessage(pendingApproval.assistantId, (msg) => ({
+            ...msg,
+            content: msg.content + ev.data.text,
+            activity: msg.activity.includes("Gerando resposta.")
+              ? msg.activity
+              : [...msg.activity, "Gerando resposta."],
+          }));
+        } else if (ev.event === "tool") {
+          updateMessage(pendingApproval.assistantId, (msg) => ({
+            ...msg,
+            tools: [...msg.tools, ev.data.tool],
+            activity: [...msg.activity, `Tool chamada: ${ev.data.tool}`],
+          }));
+        } else if (ev.event === "approval") {
+          setPendingApproval({
+            assistantId: pendingApproval.assistantId,
+            sessionId: ev.data.session_id,
+            message: ev.data.message,
+            continueLabel: ev.data.continue_label,
+            respondNowLabel: ev.data.respond_now_label,
+          });
+          updateMessage(pendingApproval.assistantId, (msg) => ({
+            ...msg,
+            streaming: false,
+            activity: [...msg.activity, ev.data.message],
+          }));
+          setStreaming(false);
+          return;
+        } else if (ev.event === "error") {
+          updateMessage(pendingApproval.assistantId, (msg) => ({
+            ...msg,
+            content: `Erro: ${ev.data.error}`,
+            activity: [...msg.activity, `Erro: ${ev.data.error}`],
+            streaming: false,
+            error: true,
+          }));
+          setStreaming(false);
+          return;
+        }
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        updateMessage(pendingApproval.assistantId, (msg) => ({
+          ...msg,
+          content: "Falha na conexão.",
+          streaming: false,
+          error: true,
+        }));
+      }
+    }
+
+    updateMessage(pendingApproval.assistantId, (msg) => ({ ...msg, streaming: false }));
+    setStreaming(false);
+    textareaRef.current?.focus();
+  }, [pendingApproval, setPendingApproval, streaming, updateMessage]);
 
   return (
     <div className="flex h-full">
@@ -122,6 +223,25 @@ export default function ChatPage() {
         </div>
 
         <div className="border-t border-border/50 bg-surface px-5 pb-5 pt-3">
+          {pendingApproval && pendingApproval.sessionId === sessionId && (
+            <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent/25 bg-accent-dim/60 px-4 py-3">
+              <p className="text-sm text-text">{pendingApproval.message}</p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => void handleDecision("continue")}
+                  className="rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-h"
+                >
+                  {pendingApproval.continueLabel}
+                </button>
+                <button
+                  onClick={() => void handleDecision("respond_now")}
+                  className="rounded-lg border border-border bg-surface2 px-3 py-2 text-sm font-medium text-text hover:border-border-2"
+                >
+                  {pendingApproval.respondNowLabel}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="mx-auto flex max-w-2xl items-end gap-3">
             <div className="relative flex-1">
               <textarea
