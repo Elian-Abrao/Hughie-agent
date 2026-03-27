@@ -7,14 +7,14 @@ import { IconSearch, IconX } from "../components/Icons";
 const TYPES = ["", "preference", "pattern", "project", "person", "fact"] as const;
 
 const TYPE_META: Record<string, { label: string; dot: string; badge: string }> = {
-  "":          { label: "Todas",       dot: "bg-muted",       badge: "text-muted-2 bg-surface3 border-border-2" },
-  preference:  { label: "Preferência", dot: "bg-blue-400",    badge: "text-blue-300 bg-blue-950/50 border-blue-800/50" },
-  pattern:     { label: "Padrão",      dot: "bg-purple-400",  badge: "text-purple-300 bg-purple-950/50 border-purple-800/50" },
-  project:     { label: "Projeto",     dot: "bg-emerald-400", badge: "text-emerald-300 bg-emerald-950/50 border-emerald-800/50" },
-  person:      { label: "Pessoa",      dot: "bg-orange-400",  badge: "text-orange-300 bg-orange-950/50 border-orange-800/50" },
-  fact:        { label: "Fato",        dot: "bg-zinc-400",    badge: "text-zinc-300 bg-zinc-800/60 border-zinc-700/50" },
-  file:        { label: "Arquivo",     dot: "bg-yellow-400",  badge: "text-yellow-300 bg-yellow-950/50 border-yellow-800/50" },
-  directory:   { label: "Diretório",   dot: "bg-teal-400",    badge: "text-teal-300 bg-teal-950/50 border-teal-800/50" },
+  "":          { label: "Todas",       dot: "bg-muted",      badge: "text-muted-2 bg-surface3 border-border-2" },
+  preference:  { label: "Preferência", dot: "bg-orange-300", badge: "text-accent bg-accent/10 border-accent/20" },
+  pattern:     { label: "Padrão",      dot: "bg-amber-500",  badge: "text-orange-700 dark:text-orange-200 bg-orange-500/10 border-orange-500/20" },
+  project:     { label: "Projeto",     dot: "bg-orange-500", badge: "text-orange-700 dark:text-orange-100 bg-orange-500/10 border-orange-500/20" },
+  person:      { label: "Pessoa",      dot: "bg-yellow-500", badge: "text-yellow-700 dark:text-yellow-200 bg-yellow-500/10 border-yellow-500/20" },
+  fact:        { label: "Fato",        dot: "bg-stone-400",  badge: "text-stone-700 dark:text-stone-200 bg-stone-500/10 border-stone-500/20" },
+  file:        { label: "Arquivo",     dot: "bg-amber-400",  badge: "text-amber-700 dark:text-amber-200 bg-amber-500/10 border-amber-500/20" },
+  directory:   { label: "Diretório",   dot: "bg-orange-600", badge: "text-orange-800 dark:text-orange-200 bg-orange-600/10 border-orange-600/20" },
 };
 
 function getMeta(type: string) {
@@ -53,6 +53,10 @@ export default function MemoryPage() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Toolbar */}
         <div className="px-6 py-4 border-b border-border bg-surface/60 backdrop-blur-sm flex-shrink-0 space-y-3">
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Memória</span>
+            <span className="block text-sm font-medium text-text">Notas persistentes do Hughie</span>
+          </div>
           {/* Search */}
           <div className="flex gap-2">
             <div className="flex-1 relative">
@@ -62,17 +66,17 @@ export default function MemoryPage() {
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") runSearch(); if (e.key === "Escape") clearSearch(); }}
                 placeholder="Busca semântica…"
-                className="w-full bg-surface2 border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-[#d8d8f0] placeholder-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
+                className="w-full bg-surface2 border border-border rounded-lg pl-9 pr-4 py-2 text-sm text-text placeholder-muted outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all"
               />
               {query && (
-                <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-[#d8d8f0] transition-colors">
+                <button onClick={clearSearch} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-text transition-colors">
                   <IconX size={13} />
                 </button>
               )}
             </div>
             <button
               onClick={runSearch}
-              className="px-4 py-2 bg-accent hover:bg-accent-h text-white rounded-lg text-sm font-medium transition-colors shadow-[0_0_10px_rgba(124,106,247,0.3)]"
+              className="px-4 py-2 bg-accent hover:bg-accent-h text-white rounded-lg text-sm font-medium transition-colors shadow-[0_0_12px_rgba(245,123,32,0.22)]"
             >
               Buscar
             </button>
@@ -89,7 +93,7 @@ export default function MemoryPage() {
                   onClick={() => handleTypeFilter(type)}
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all",
-                    active ? "bg-accent text-white border-accent shadow-[0_0_8px_rgba(124,106,247,0.4)]" : "border-border text-muted hover:text-[#d8d8f0] hover:border-border-2"
+                    active ? "bg-accent text-white border-accent shadow-[0_0_8px_rgba(245,123,32,0.3)]" : "border-border text-muted hover:text-text hover:border-border-2"
                   )}
                 >
                   {type && <span className={clsx("w-1.5 h-1.5 rounded-full flex-shrink-0", meta.dot)} />}
@@ -134,19 +138,19 @@ export default function MemoryPage() {
 
       {/* ── Detail panel ── */}
       {selected && (
-        <div className="w-72 flex-shrink-0 border-l border-border bg-surface flex flex-col animate-fadein">
+        <div className="w-72 flex-shrink-0 border-l border-border bg-gradient-to-b from-surface to-bg flex flex-col animate-fadein">
           <div className="flex items-center justify-between p-4 border-b border-border">
             <TypeBadge type={selected.type} />
             <button
               onClick={() => setSelected(null)}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-[#d8d8f0] hover:bg-surface2 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-text hover:bg-surface2 transition-colors"
             >
               <IconX size={14} />
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            <h2 className="text-[#e0e0f8] font-semibold leading-snug">{selected.title}</h2>
-            <p className="text-sm text-[#a8a8c8] leading-relaxed whitespace-pre-wrap">{selected.content}</p>
+            <h2 className="text-strong font-semibold leading-snug">{selected.title}</h2>
+            <p className="text-sm text-muted-2 leading-relaxed whitespace-pre-wrap">{selected.content}</p>
             <div className="pt-3 border-t border-border space-y-2 text-xs">
               <Row label="Importância" value={selected.importance.toFixed(1)} />
               <Row label="Status"      value={<span className="capitalize">{selected.status}</span>} />
@@ -169,12 +173,12 @@ function NoteCard({ note, selected, onClick }: { note: BrainNote; selected: bool
       className={clsx(
         "group text-left p-4 rounded-xl border transition-all duration-150 space-y-2.5",
         selected
-          ? "border-accent bg-accent-dim shadow-[0_0_0_1px_rgba(124,106,247,0.5),0_0_20px_rgba(124,106,247,0.1)]"
+          ? "border-accent bg-accent-dim shadow-[0_0_0_1px_rgba(245,123,32,0.35),0_0_20px_rgba(245,123,32,0.12)]"
           : "border-border bg-surface hover:border-border-2 hover:bg-surface2 hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-[#d8d8f0] leading-snug group-hover:text-[#e8e8ff] transition-colors">
+        <p className="text-sm font-medium text-text leading-snug group-hover:text-strong transition-colors">
           {note.title}
         </p>
         <TypeBadge type={note.type} />
@@ -204,7 +208,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between">
       <span className="text-muted">{label}</span>
-      <span className="text-[#c0c0e0]">{value}</span>
+      <span className="text-muted-2">{value}</span>
     </div>
   );
 }

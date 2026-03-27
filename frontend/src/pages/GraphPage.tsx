@@ -5,17 +5,17 @@ import { fetchBrainGraph } from "../api/client";
 import type { GraphData, GraphNode } from "../api/client";
 
 const TYPE_COLOR: Record<string, string> = {
-  preference: "#60a5fa",
-  pattern:    "#a78bfa",
-  project:    "#34d399",
-  person:     "#fb923c",
-  fact:       "#94a3b8",
-  file:       "#fbbf24",
-  directory:  "#2dd4bf",
+  preference: "#ffb36b",
+  pattern: "#f97316",
+  project: "#fb923c",
+  person: "#facc15",
+  fact: "#a8a29e",
+  file: "#f59e0b",
+  directory: "#ea580c",
 };
 
 function typeColor(type: string) {
-  return TYPE_COLOR[type] ?? "#7c6af7";
+  return TYPE_COLOR[type] ?? "#f97316";
 }
 
 export default function GraphPage() {
@@ -54,7 +54,7 @@ export default function GraphPage() {
       const fg = ForceGraph()(el)
         .width(el.offsetWidth)
         .height(el.offsetHeight)
-        .backgroundColor("#09090f")
+        .backgroundColor(`rgb(${getComputedStyle(document.documentElement).getPropertyValue("--bg").trim()})`)
         .graphData({ nodes, links })
         .nodeCanvasObject((node: any, ctx: any) => {
           if (!isFinite(node.x) || !isFinite(node.y)) return;
@@ -86,10 +86,10 @@ export default function GraphPage() {
           ctx.fill();
         })
         .nodeLabel((node: any) => node.label)
-        .linkColor(() => "rgba(120,120,180,0.22)")
+        .linkColor(() => "rgba(180,110,40,0.22)")
         .linkWidth(1)
         .linkDirectionalArrowLength(4)
-        .linkDirectionalArrowColor(() => "rgba(120,120,180,0.5)")
+        .linkDirectionalArrowColor(() => "rgba(180,110,40,0.5)")
         .linkDirectionalArrowRelPos(1)
         .onNodeClick((node: any) => {
           setSelected((prev) => (prev?.id === node.id ? null : (node as GraphNode)));
@@ -113,7 +113,10 @@ export default function GraphPage() {
       {/* Header */}
       <div className="h-12 flex items-center justify-between px-5 border-b border-border flex-shrink-0 bg-surface/60 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-[#d8d8f0]">Grafo de memória</span>
+          <div>
+            <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Grafo</span>
+            <span className="block text-sm font-medium text-text">Conexões entre notas</span>
+          </div>
           {!loading && (
             <span className="text-xs text-muted">
               {counts.nodes} nó{counts.nodes !== 1 ? "s" : ""} · {counts.edges} lig{counts.edges !== 1 ? "ações" : "ação"}
@@ -131,7 +134,7 @@ export default function GraphPage() {
           </div>
           <button
             onClick={load}
-            className="text-xs text-muted hover:text-[#d8d8f0] transition-colors px-2 py-1 rounded-md hover:bg-surface2"
+            className="text-xs text-muted hover:text-text transition-colors px-2 py-1 rounded-md hover:bg-surface2"
           >
             Atualizar
           </button>
@@ -163,10 +166,10 @@ export default function GraphPage() {
         {selected && (
           <div className="absolute top-4 right-4 w-60 bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-4 shadow-xl animate-fadein">
             <div className="flex items-start justify-between gap-2 mb-3">
-              <h3 className="text-sm font-semibold text-[#e0e0ff] leading-snug">{selected.label}</h3>
+              <h3 className="text-sm font-semibold text-strong leading-snug">{selected.label}</h3>
               <button
                 onClick={() => setSelected(null)}
-                className="text-muted hover:text-[#d8d8f0] transition-colors flex-shrink-0 text-lg leading-none"
+                className="text-muted hover:text-text transition-colors flex-shrink-0 text-lg leading-none"
               >
                 ✕
               </button>

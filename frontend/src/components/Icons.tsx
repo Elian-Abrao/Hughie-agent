@@ -70,6 +70,30 @@ export function IconSend({ size = 16, className }: IconProps) {
   );
 }
 
+export function IconSun({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2.5" />
+      <path d="M12 19.5V22" />
+      <path d="M4.93 4.93l1.77 1.77" />
+      <path d="M17.3 17.3l1.77 1.77" />
+      <path d="M2 12h2.5" />
+      <path d="M19.5 12H22" />
+      <path d="M4.93 19.07l1.77-1.77" />
+      <path d="M17.3 6.7l1.77-1.77" />
+    </svg>
+  );
+}
+
+export function IconMoon({ size = 16, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
+      <path d="M21 12.8A9 9 0 1111.2 3 7 7 0 0021 12.8z" />
+    </svg>
+  );
+}
+
 export function IconX({ size = 16, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className={className} {...base}>
