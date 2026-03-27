@@ -7,6 +7,7 @@ Read-only commands run without confirmation; write/destructive ones ask first.
 
 import asyncio
 import hashlib
+import re
 import shlex
 from langchain_core.tools import tool
 from hughie.approvals import confirm_or_raise
@@ -31,6 +32,12 @@ _READ_ONLY = frozenset([
 
 SSH_TIMEOUT = 30
 OUTPUT_LIMIT = 8_000
+_WRITE_PATTERNS = (
+    r">",
+    r"\|\s*tee\b",
+    r"\b(rm|mv|cp|touch|mkdir|rmdir|chmod|chown|ln|truncate)\b",
+    r"\bsed\s+-i\b",
+)
 
 
 def _ssh_base(host: str) -> list[str]:
@@ -45,6 +52,8 @@ def _ssh_base(host: str) -> list[str]:
 
 def _is_read_only(command: str) -> bool:
     cmd = command.strip()
+    if any(re.search(pattern, cmd) for pattern in _WRITE_PATTERNS):
+        return False
     first = cmd.split()[0] if cmd.split() else ""
     if first in _READ_ONLY:
         return True

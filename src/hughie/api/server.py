@@ -289,7 +289,21 @@ async def chat_decision_stream(req: ChatDecisionRequest):
     _pending_chats.pop(req.session_id, None)
 
     if pending["type"] == "tool_confirmation":
-        register_decision(req.session_id, pending["action_key"], decision == "approve")
+        approved = decision == "approve"
+        register_decision(req.session_id, pending["action_key"], approved)
+        if approved:
+            message = (
+                f"{message}\n\n"
+                "IMPORTANTE: o usuário já autorizou a ação sensível pendente. "
+                "Se ela ainda for necessária, execute a ação aprovada diretamente sem pedir confirmação de novo."
+            )
+        else:
+            message = (
+                f"{message}\n\n"
+                "IMPORTANTE: o usuário negou a ação sensível pendente. "
+                "Não tente executá-la novamente. Responda explicando brevemente que a ação foi negada "
+                "e, se fizer sentido, ofereça uma alternativa sem escrita ou execução sensível."
+            )
         recursion_limit = settings.recursion_limit
         allow_pause = True
     elif decision == "respond_now":

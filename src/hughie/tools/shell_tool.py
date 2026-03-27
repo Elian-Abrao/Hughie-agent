@@ -1,5 +1,6 @@
 """Shell execution tool with read/write detection."""
 
+import re
 import shlex
 import subprocess
 from langchain_core.tools import tool
@@ -28,10 +29,18 @@ _READ_ONLY = frozenset([
 ])
 
 MAX_OUTPUT = 8_000  # chars returned to LLM
+_WRITE_PATTERNS = (
+    r">",
+    r"\|\s*tee\b",
+    r"\b(rm|mv|cp|touch|mkdir|rmdir|chmod|chown|ln|truncate)\b",
+    r"\bsed\s+-i\b",
+)
 
 
 def _is_read_only(command: str) -> bool:
     cmd = command.strip()
+    if any(re.search(pattern, cmd) for pattern in _WRITE_PATTERNS):
+        return False
     first = cmd.split()[0] if cmd.split() else ""
     if first in _READ_ONLY:
         return True

@@ -237,15 +237,15 @@ export default function ChatPage() {
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={() => void handleDecision(pendingApproval.approveDecision)}
-                  className="rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-medium text-white hover:bg-accent-h"
+                  className="inline-flex min-w-[10rem] items-center justify-center rounded-lg border border-accent bg-accent px-3 py-2 text-sm font-semibold text-white hover:bg-accent-h"
                 >
-                  {pendingApproval.approveLabel}
+                  {pendingApproval.approveLabel || "Autorizar"}
                 </button>
                 <button
                   onClick={() => void handleDecision(pendingApproval.rejectDecision)}
-                  className="rounded-lg border border-border bg-surface2 px-3 py-2 text-sm font-medium text-text hover:border-border-2"
+                  className="inline-flex min-w-[10rem] items-center justify-center rounded-lg border border-border bg-surface2 px-3 py-2 text-sm font-semibold text-text hover:border-border-2"
                 >
-                  {pendingApproval.rejectLabel}
+                  {pendingApproval.rejectLabel || "Negar"}
                 </button>
               </div>
             </div>
