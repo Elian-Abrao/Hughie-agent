@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     consolidation_batch_size: int = 10
     consolidation_context_turns: int = 3
 
+    local_machine_host: str = "tree-dev"
+    local_machine_path_prefixes: list[str] = ["/home/elian/", "/dados/"]
+
     system_prompt: str = (
         "Você é Hughie, agente pessoal de Elian. "
         "Seja conciso e direto. Responda em português.\n\n"
