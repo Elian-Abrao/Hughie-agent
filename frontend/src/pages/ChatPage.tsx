@@ -246,8 +246,8 @@ export default function ChatPage() {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8 animate-fadein">
-      <div className="w-16 h-16 rounded-2xl bg-accent-dim border border-[#3a308a] flex items-center justify-center mb-5 shadow-[0_0_24px_rgba(124,106,247,0.2)]">
-        <span className="text-2xl">🤖</span>
+      <div className="w-20 h-20 rounded-2xl bg-accent-dim border border-[#3a308a] flex items-center justify-center mb-5 shadow-[0_0_24px_rgba(124,106,247,0.2)] overflow-hidden">
+        <img src="/Hughie.svg" alt="Hughie" className="w-full h-full object-contain" />
       </div>
       <h2 className="text-[#d8d8f0] font-semibold text-base mb-1.5">Olá, sou o Hughie</h2>
       <p className="text-muted text-sm max-w-xs leading-relaxed">

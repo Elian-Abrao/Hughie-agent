@@ -57,6 +57,7 @@ export default function GraphPage() {
         .backgroundColor("#09090f")
         .graphData({ nodes, links })
         .nodeCanvasObject((node: any, ctx: any) => {
+          if (!isFinite(node.x) || !isFinite(node.y)) return;
           const r = Math.sqrt(Math.max(0.5, node.importance ?? 1)) * 5 + 4;
           node.__r = r;
           const color = typeColor(node.type);
