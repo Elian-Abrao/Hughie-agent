@@ -24,7 +24,10 @@ services:
     ports:
       - "127.0.0.1:47831:47831"
     volumes:
-      - broker-data:/root/.config/llm-broker
+      - broker-data:/root/.codex-bridge/auth
+    environment:
+      CODEX_BRIDGE_AUTH_STORE_PATH: /root/.codex-bridge/auth/codex-session.json
+      CODEX_BRIDGE_DISABLE_KEYRING: "1"
     env_file: .env
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:47831/v1/health"]
