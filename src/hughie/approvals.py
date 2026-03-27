@@ -5,13 +5,14 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+from langgraph.errors import GraphBubbleUp
 
 _approval_mode: ContextVar[str] = ContextVar("hughie_approval_mode", default="interactive")
 _session_id: ContextVar[str | None] = ContextVar("hughie_session_id", default=None)
 
 
 @dataclass
-class ApprovalRequired(Exception):
+class ApprovalRequired(GraphBubbleUp):
     action_key: str
     message: str
     approve_label: str = "Autorizar"
