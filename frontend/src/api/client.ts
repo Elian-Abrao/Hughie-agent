@@ -95,6 +95,12 @@ export async function fetchSessionMessages(sessionId: string): Promise<SessionMe
 
 // ── Brain ─────────────────────────────────────────────────────────────────────
 
+export async function fetchNote(id: string): Promise<BrainNote | null> {
+  const res = await fetch(`${BASE}/v1/brain/notes/${encodeURIComponent(id)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchNotes(noteType = "", limit = 100): Promise<BrainNote[]> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (noteType) params.set("note_type", noteType);

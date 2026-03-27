@@ -1,30 +1,34 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { fetchBrainGraph } from "../api/client";
-import type { GraphData, GraphNode } from "../api/client";
+import { fetchBrainGraph, fetchNote } from "../api/client";
+import type { GraphData, GraphNode, BrainNote } from "../api/client";
+import { MarkdownContent } from "../components/MarkdownContent";
+import { IconX } from "../components/Icons";
 
 const TYPE_COLOR: Record<string, string> = {
-  preference: "#ffb36b",
-  pattern: "#f97316",
-  project: "#fb923c",
-  person: "#facc15",
-  fact: "#a8a29e",
-  file: "#f59e0b",
-  directory: "#ea580c",
+  preference: "#7dd3fc",
+  pattern:    "#c4b5fd",
+  project:    "#6ee7b7",
+  person:     "#fda4af",
+  fact:       "#94a3b8",
+  file:       "#fde68a",
+  directory:  "#5eead4",
 };
 
 function typeColor(type: string) {
-  return TYPE_COLOR[type] ?? "#f97316";
+  return TYPE_COLOR[type] ?? "#94a3b8";
 }
 
 export default function GraphPage() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef     = useRef<any>(null);
-  const [graphData, setGraphData] = useState<GraphData | null>(null);
-  const [selected, setSelected]   = useState<GraphNode | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [counts, setCounts]       = useState({ nodes: 0, edges: 0 });
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const graphRef      = useRef<any>(null);
+  const [graphData, setGraphData]     = useState<GraphData | null>(null);
+  const [selected, setSelected]       = useState<GraphNode | null>(null);
+  const [noteDetail, setNoteDetail]   = useState<BrainNote | null>(null);
+  const [loadingNote, setLoadingNote] = useState(false);
+  const [loading, setLoading]         = useState(true);
+  const [counts, setCounts]           = useState({ nodes: 0, edges: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,6 +42,16 @@ export default function GraphPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetch note detail on node click
+  useEffect(() => {
+    if (!selected) { setNoteDetail(null); return; }
+    if (selected.id.startsWith("path:")) { setNoteDetail(null); return; }
+    setLoadingNote(true);
+    fetchNote(selected.id)
+      .then(setNoteDetail)
+      .finally(() => setLoadingNote(false));
+  }, [selected]);
 
   useEffect(() => {
     if (!containerRef.current || !graphData || graphData.nodes.length === 0) return;
@@ -54,7 +68,7 @@ export default function GraphPage() {
       const fg = ForceGraph()(el)
         .width(el.offsetWidth)
         .height(el.offsetHeight)
-        .backgroundColor(`rgb(${getComputedStyle(document.documentElement).getPropertyValue("--bg").trim()})`)
+        .backgroundColor("rgba(0,0,0,0)")
         .graphData({ nodes, links })
         .nodeCanvasObject((node: any, ctx: any) => {
           if (!isFinite(node.x) || !isFinite(node.y)) return;
@@ -63,7 +77,7 @@ export default function GraphPage() {
           const color = typeColor(node.type);
 
           const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, r * 2.5);
-          grad.addColorStop(0, color + "40");
+          grad.addColorStop(0, color + "30");
           grad.addColorStop(1, "transparent");
           ctx.beginPath();
           ctx.arc(node.x, node.y, r * 2.5, 0, Math.PI * 2);
@@ -74,7 +88,7 @@ export default function GraphPage() {
           ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
           ctx.fillStyle = color;
           ctx.fill();
-          ctx.strokeStyle = "rgba(120,100,80,0.28)";
+          ctx.strokeStyle = "rgba(255,255,255,0.15)";
           ctx.lineWidth = 1;
           ctx.stroke();
         })
@@ -86,17 +100,17 @@ export default function GraphPage() {
           ctx.fill();
         })
         .nodeLabel((node: any) => node.label)
-        .linkColor(() => "rgba(180,110,40,0.22)")
+        .linkColor(() => "rgba(148,163,184,0.18)")
         .linkWidth(1)
         .linkDirectionalArrowLength(4)
-        .linkDirectionalArrowColor(() => "rgba(180,110,40,0.5)")
+        .linkDirectionalArrowColor(() => "rgba(148,163,184,0.4)")
         .linkDirectionalArrowRelPos(1)
         .onNodeClick((node: any) => {
           setSelected((prev) => (prev?.id === node.id ? null : (node as GraphNode)));
         })
         .onBackgroundClick(() => setSelected(null));
 
-      fg.d3Force("charge")?.strength?.(-120);
+      fg.d3Force("charge")?.strength?.(-140);
       graphRef.current = fg;
     });
 
@@ -111,12 +125,9 @@ export default function GraphPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="h-12 flex items-center justify-between px-5 border-b border-border flex-shrink-0 bg-surface">
+      <div className="h-12 flex items-center justify-between px-5 border-b border-white/[0.07] flex-shrink-0 bg-surface/50 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <div>
-            <span className="block text-[10px] uppercase tracking-[0.18em] text-muted">Grafo</span>
-            <span className="block text-sm font-medium text-text">Conexões entre notas</span>
-          </div>
+          <span className="text-sm font-medium text-[#d8d8f0]">Grafo de memória</span>
           {!loading && (
             <span className="text-xs text-muted">
               {counts.nodes} nó{counts.nodes !== 1 ? "s" : ""} · {counts.edges} lig{counts.edges !== 1 ? "ações" : "ação"}
@@ -134,7 +145,7 @@ export default function GraphPage() {
           </div>
           <button
             onClick={load}
-            className="text-xs text-muted hover:text-text transition-colors px-2 py-1 rounded-md hover:bg-surface2"
+            className="text-xs text-muted hover:text-[#d8d8f0] transition-colors px-2 py-1 rounded-md hover:bg-white/[0.06]"
           >
             Atualizar
           </button>
@@ -156,42 +167,54 @@ export default function GraphPage() {
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
             <div className="text-4xl mb-3">🕸️</div>
             <p className="text-muted text-sm">Nenhuma nota com conexões ainda</p>
-            <p className="text-muted/60 text-xs mt-1">Converse com o Hughie para construir a memória</p>
           </div>
         )}
 
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* Selected node */}
+        {/* Node detail panel */}
         {selected && (
-          <div className="absolute top-4 right-4 w-60 bg-surface border border-border rounded-xl p-4 animate-fadein">
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <h3 className="text-sm font-semibold text-strong leading-snug">{selected.label}</h3>
-              <button
-                onClick={() => setSelected(null)}
-                className="text-muted hover:text-text transition-colors flex-shrink-0 text-lg leading-none"
-              >
-                ✕
+          <div className="absolute top-4 right-4 w-72 max-h-[calc(100%-2rem)] flex flex-col bg-[#0f0f18]/95 backdrop-blur-md border border-white/[0.1] rounded-xl shadow-2xl animate-fadein overflow-hidden">
+            <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-white/[0.07] shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: typeColor(selected.type) }} />
+                <h3 className="text-sm font-semibold text-[#e0e0ff] leading-snug">{selected.label}</h3>
+              </div>
+              <button onClick={() => setSelected(null)} className="shrink-0 text-muted hover:text-[#d8d8f0] transition-colors mt-0.5">
+                <IconX size={14} />
               </button>
             </div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: typeColor(selected.type) }} />
-              <span className="text-xs text-muted capitalize">{selected.type}</span>
-              <span className="text-xs text-muted ml-auto">★ {(selected.importance ?? 1).toFixed(1)}</span>
+
+            <div className="flex items-center gap-2 px-4 py-2 shrink-0 text-xs text-muted">
+              <span className="capitalize">{selected.type}</span>
+              <span className="opacity-30">·</span>
+              <span>★ {(selected.importance ?? 1).toFixed(1)}</span>
+              <span className="opacity-30">·</span>
+              <span className={clsx("capitalize", selected.status === "active" ? "text-emerald-400" : "")}>
+                {selected.status}
+              </span>
             </div>
-            <div className={clsx(
-              "inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full border",
-              selected.status === "active"
-                ? "text-emerald-300 bg-emerald-950/50 border-emerald-800/50"
-                : "text-muted bg-surface2 border-border"
-            )}>
-              <span className={clsx("w-1.5 h-1.5 rounded-full", selected.status === "active" ? "bg-emerald-400" : "bg-muted")} />
-              {selected.status}
+
+            <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
+              {loadingNote ? (
+                <div className="flex items-center gap-2 py-3">
+                  <div className="w-3.5 h-3.5 border border-accent border-t-transparent rounded-full animate-spin-slow" />
+                  <span className="text-xs text-muted">Carregando…</span>
+                </div>
+              ) : noteDetail ? (
+                <div className="prose-chat text-[12px] leading-relaxed text-[#b8b8d8]">
+                  <MarkdownContent content={noteDetail.content} />
+                </div>
+              ) : selected.id.startsWith("path:") ? (
+                <p className="text-xs text-muted pt-1 break-all font-mono">
+                  {selected.id.replace("path:", "")}
+                </p>
+              ) : null}
             </div>
           </div>
         )}
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] text-muted/40 pointer-events-none select-none">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] text-muted/30 pointer-events-none select-none">
           arraste · scroll para zoom · clique num nó para detalhes
         </div>
       </div>

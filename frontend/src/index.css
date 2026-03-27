@@ -4,6 +4,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Background dot grid ─────────────────────────────────────────────────── */
+body, #root {
+  background-color: rgb(var(--bg));
+  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+}
+
 :root {
   color-scheme: dark;
   --bg: 38 38 36;

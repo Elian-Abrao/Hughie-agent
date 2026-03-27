@@ -133,6 +133,22 @@ async def chat_stream(req: ChatRequest):
     return EventSourceResponse(generate())
 
 
+@app.get("/v1/brain/notes/{note_id}")
+async def get_note(note_id: str):
+    note = await brain_store.get_note_by_id(note_id)
+    if note is None:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return {
+        "id": note.id,
+        "title": note.title,
+        "type": note.type,
+        "importance": note.importance,
+        "status": note.status,
+        "content": note.content,
+        "updated_at": note.updated_at.isoformat(),
+    }
+
+
 @app.get("/v1/brain/notes")
 async def list_notes(note_type: str = Query(""), limit: int = Query(50)):
     notes = await brain_store.list_notes(limit=limit)
