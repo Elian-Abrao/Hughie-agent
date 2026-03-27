@@ -6,7 +6,6 @@ Read-only commands run without confirmation; write/destructive ones ask first.
 """
 
 import asyncio
-import hashlib
 import re
 import shlex
 from langchain_core.tools import tool
@@ -139,7 +138,7 @@ async def ssh_write_file(host: str, path: str, content: str) -> str:
         content: Content to write (overwrites existing file)
     """
     confirmed = await confirm_or_raise(
-        action_key=f"ssh_write_file:{host}:{path}:{hashlib.sha256(content.encode('utf-8')).hexdigest()}",
+        action_key=f"ssh_write_file:{host}:{path}",
         prompt=f"⚠️  Hughie quer escrever {len(content)} chars em [{host}]:\n  {path}",
         approve_label="Autorizar escrita remota",
         reject_label="Negar escrita remota",

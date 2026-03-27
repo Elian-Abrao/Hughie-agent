@@ -1,7 +1,6 @@
 """Filesystem tools: read, write, list, find."""
 
 import fnmatch
-import hashlib
 from pathlib import Path
 
 from langchain_core.tools import tool
@@ -48,7 +47,7 @@ async def write_file(path: str, content: str) -> str:
     """
     p = _safe_path(path)
     action = "overwrite" if p.exists() else "create"
-    action_key = f"write_file:{p}:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+    action_key = f"write_file:{p}"
     confirmed = await confirm_or_raise(
         action_key=action_key,
         prompt=f"⚠️  Hughie quer {action} o arquivo:\n  {p}",
