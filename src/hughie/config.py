@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     bridge_model: str = "gpt-5.4"
     bridge_timeout: float = 120.0
 
-    consolidation_provider: str = "gemini_cli"
-    consolidation_model: str = "gemini-2.5-flash"
+    consolidation_provider: str = "codex"
+    consolidation_model: str = "gpt-5.4"
     consolidation_broker_timeout: float = 90.0
     consolidation_api_fallback_model: str = "gemini-2.0-flash"
     consolidation_batch_size: int = 10

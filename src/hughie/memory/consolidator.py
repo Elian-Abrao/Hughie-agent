@@ -119,10 +119,10 @@ async def _generate_via_gemini_api(prompt: str, *, response_format: str | None =
 
 async def _generate_text(prompt: str, *, response_format: str | None = None) -> str:
     try:
-        return await _generate_via_gemini_api(prompt, response_format=response_format)
-    except Exception as exc:
-        logger.warning("Consolidation Gemini API failed, falling back to broker: %s", exc)
         return await _generate_via_broker(prompt)
+    except Exception as exc:
+        logger.warning("Consolidation broker failed, falling back to Gemini API: %s", exc)
+        return await _generate_via_gemini_api(prompt, response_format=response_format)
 
 
 async def _count_unprocessed(session_id: str) -> int:
