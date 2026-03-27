@@ -86,6 +86,24 @@ def test_run_all_returns_all_counters(monkeypatch):
     monkeypatch.setattr(maintenance, "run_decay", AsyncMock(return_value=3))
     monkeypatch.setattr(maintenance, "run_garbage_collection", AsyncMock(return_value=1))
     monkeypatch.setattr(maintenance, "run_conflict_resolution", AsyncMock(return_value=2))
+    exec_mock = AsyncMock()
+
+    class FakeConn:
+        async def execute(self, query, *args):
+            await exec_mock(query, *args)
+
+    class FakeAcquire:
+        async def __aenter__(self):
+            return FakeConn()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeAcquire()
+
+    monkeypatch.setattr(maintenance, "get_pool", AsyncMock(return_value=FakePool()))
 
     result = asyncio.run(maintenance.run_all())
 

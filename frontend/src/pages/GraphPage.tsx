@@ -20,6 +20,12 @@ function typeColor(type: string) {
   return TYPE_COLOR[type] ?? "#94a3b8";
 }
 
+function temporalColor(weight: number) {
+  if (weight >= 0.75) return "#22c55e";
+  if (weight >= 0.4) return "#f59e0b";
+  return "#ef4444";
+}
+
 export default function GraphPage() {
   const containerRef  = useRef<HTMLDivElement>(null);
   const graphRef      = useRef<any>(null);
@@ -28,6 +34,24 @@ export default function GraphPage() {
   const [noteDetail, setNoteDetail]   = useState<BrainNote | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
   const [loading, setLoading]         = useState(true);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [minConfidence, setMinConfidence] = useState(0);
+
+  const filteredNodes = (graphData?.nodes ?? []).filter((node) => {
+    if (typeFilter && node.type !== typeFilter) return false;
+    if (sourceFilter && node.fonte !== sourceFilter) return false;
+    if ((node.confianca ?? 0) < minConfidence) return false;
+    return true;
+  });
+  const allowedNodeIds = new Set(filteredNodes.map((node) => node.id));
+  const filteredEdges = (graphData?.edges ?? []).filter(
+    (edge) => allowedNodeIds.has(edge.source) && allowedNodeIds.has(edge.target),
+  );
+  const filteredGraphData = { nodes: filteredNodes, edges: filteredEdges };
+  const availableTypes = Array.from(new Set((graphData?.nodes ?? []).map((node) => node.type))).sort();
+  const availableSources = Array.from(new Set((graphData?.nodes ?? []).map((node) => node.fonte))).sort();
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -51,7 +75,7 @@ export default function GraphPage() {
   }, [selected]);
 
   useEffect(() => {
-    if (!containerRef.current || !graphData || graphData.nodes.length === 0) return;
+    if (!containerRef.current || !filteredGraphData || filteredGraphData.nodes.length === 0) return;
 
     const el = containerRef.current;
 
@@ -59,8 +83,8 @@ export default function GraphPage() {
       if (!el) return;
       const ForceGraph = (mod as any).default ?? mod;
 
-      const nodes = graphData.nodes.map((n) => ({ ...n }));
-      const links = graphData.edges.map((e) => ({ ...e }));
+      const nodes = filteredGraphData.nodes.map((n) => ({ ...n }));
+      const links = filteredGraphData.edges.map((e) => ({ ...e }));
 
       const fg = ForceGraph()(el)
         .width(el.offsetWidth)
@@ -72,6 +96,8 @@ export default function GraphPage() {
           const r = Math.sqrt(Math.max(0.5, node.importance ?? 1)) * 5 + 4;
           node.__r = r;
           const color = typeColor(node.type);
+          const ring = temporalColor(node.peso_temporal ?? 0);
+          const alpha = Math.max(0.25, Math.min(1, node.confianca ?? 0.3));
 
           const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, r * 2.5);
           grad.addColorStop(0, color + "30");
@@ -83,10 +109,12 @@ export default function GraphPage() {
 
           ctx.beginPath();
           ctx.arc(node.x, node.y, r, 0, Math.PI * 2);
+          ctx.globalAlpha = alpha;
           ctx.fillStyle = color;
           ctx.fill();
-          ctx.strokeStyle = "rgba(255,255,255,0.15)";
-          ctx.lineWidth = 1;
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = ring;
+          ctx.lineWidth = 2;
           ctx.stroke();
         })
         .nodeCanvasObjectMode(() => "replace")
@@ -97,8 +125,8 @@ export default function GraphPage() {
           ctx.fill();
         })
         .nodeLabel((node: any) => node.label)
-        .linkColor(() => "rgba(148,163,184,0.18)")
-        .linkWidth(1)
+        .linkColor((link: any) => link.fonte === "execucao_real" ? "rgba(34,197,94,0.35)" : "rgba(148,163,184,0.18)")
+        .linkWidth((link: any) => Math.max(1, (link.confianca ?? 0.3) * 3))
         .linkDirectionalArrowLength(4)
         .linkDirectionalArrowColor(() => "rgba(148,163,184,0.4)")
         .linkDirectionalArrowRelPos(1)
@@ -117,10 +145,25 @@ export default function GraphPage() {
       graphRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphData]);
+  }, [filteredGraphData]);
 
   return (
     <div className="flex h-full flex-col">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b dark:border-white/[0.08] border-black/[0.08]">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg bg-surface px-3 py-2 text-sm">
+          <option value="">Todos os tipos</option>
+          {availableTypes.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="rounded-lg bg-surface px-3 py-2 text-sm">
+          <option value="">Todas as fontes</option>
+          {availableSources.map((value) => <option key={value} value={value}>{value}</option>)}
+        </select>
+        <label className="flex items-center gap-2 text-sm text-muted">
+          <span>Confiança mínima</span>
+          <input type="range" min={0} max={1} step={0.1} value={minConfidence} onChange={(e) => setMinConfidence(Number(e.target.value))} />
+          <span>{minConfidence.toFixed(1)}</span>
+        </label>
+      </div>
 
       {/* Canvas */}
       <div className="flex-1 relative overflow-hidden">
@@ -159,6 +202,14 @@ export default function GraphPage() {
               <span className="capitalize">{selected.type}</span>
               <span className="opacity-30">·</span>
               <span>★ {(selected.importance ?? 1).toFixed(1)}</span>
+              <span className="opacity-30">·</span>
+              <span>{selected.fonte}</span>
+              <span className="opacity-30">·</span>
+              <span>conf {(selected.confianca ?? 0).toFixed(2)}</span>
+              <span className="opacity-30">·</span>
+              <span style={{ color: temporalColor(selected.peso_temporal ?? 0) }}>
+                tempo {(selected.peso_temporal ?? 0).toFixed(2)}
+              </span>
               <span className="opacity-30">·</span>
               <span className={clsx("capitalize", selected.status === "active" ? "text-emerald-400" : "")}>
                 {selected.status}

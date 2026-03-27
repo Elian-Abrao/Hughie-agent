@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from hughie.memory import brain_graph, brain_store
+from hughie.memory.database import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -96,5 +97,16 @@ async def run_all() -> dict[str, int]:
         raise
 
     result = {"decayed": decay, "garbage_collected": gc, "conflicts_resolved": conflict}
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO maintenance_runs (decayed, garbage_collected, conflicts_resolved)
+            VALUES ($1, $2, $3)
+            """,
+            decay,
+            gc,
+            conflict,
+        )
     logger.info("Maintenance: full run finished %s", result)
     return result

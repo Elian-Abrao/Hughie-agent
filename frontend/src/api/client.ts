@@ -9,7 +9,34 @@ export interface BrainNote {
   importance: number;
   status: string;
   content: string;
+  fonte: string;
+  confianca: number;
+  peso_temporal: number;
+  criado_por: string;
+  ultima_atualizacao: string;
+  historico: Record<string, unknown>[];
+  metadados: Record<string, unknown>;
   updated_at: string;
+  created_at: string;
+}
+
+export interface Episode {
+  id: string;
+  session_id: string;
+  created_at: string;
+  tarefa: string;
+  resultado: string;
+  tempo_total_segundos: number | null;
+  arquivos_modificados: string[];
+  decisoes_tomadas: string[];
+  erros_encontrados: Array<Record<string, unknown>>;
+  aprendizados: string[];
+  node_ids_afetados: string[];
+}
+
+export interface BrainSearchResult {
+  notes: BrainNote[];
+  episodes: Episode[];
 }
 
 export interface Session {
@@ -196,6 +223,14 @@ export async function searchNotes(q: string, limit = 5): Promise<BrainNote[]> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   const res = await fetch(`${BASE}/v1/brain/search?${params}`);
   if (!res.ok) return [];
+  const payload = (await res.json()) as BrainSearchResult;
+  return payload.notes;
+}
+
+export async function searchBrain(q: string, limit = 5): Promise<BrainSearchResult> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  const res = await fetch(`${BASE}/v1/brain/search?${params}`);
+  if (!res.ok) return { notes: [], episodes: [] };
   return res.json();
 }
 
@@ -216,6 +251,10 @@ export interface GraphNode {
   type: string;
   importance: number;
   status: string;
+  fonte: string;
+  confianca: number;
+  peso_temporal: number;
+  metadados: Record<string, unknown>;
 }
 
 export interface GraphEdge {
@@ -223,6 +262,10 @@ export interface GraphEdge {
   target: string;
   relation: string;
   weight: number;
+  confianca: number;
+  fonte: string;
+  tipo_relacao: string;
+  criado_em: string | null;
 }
 
 export interface GraphData {
@@ -233,5 +276,23 @@ export interface GraphData {
 export async function fetchBrainGraph(): Promise<GraphData> {
   const res = await fetch(`${BASE}/v1/brain/graph`);
   if (!res.ok) return { nodes: [], edges: [] };
+  return res.json();
+}
+
+export async function fetchEpisodes(limit = 20): Promise<Episode[]> {
+  const res = await fetch(`${BASE}/v1/brain/episodes?limit=${limit}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchEpisode(id: string): Promise<Episode | null> {
+  const res = await fetch(`${BASE}/v1/brain/episodes/${encodeURIComponent(id)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function runBrainMaintenance(): Promise<Record<string, number> | null> {
+  const res = await fetch(`${BASE}/v1/brain/maintain`, { method: "POST" });
+  if (!res.ok) return null;
   return res.json();
 }

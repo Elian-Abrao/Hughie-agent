@@ -29,8 +29,9 @@ from hughie.config import get_settings
 from hughie.core.graph import build_graph
 from hughie.core.nodes import init_llm
 from hughie.llm.broker_runtime import ensure_broker_ready
-from hughie.memory import brain_store, conversation_store, link_store
-from hughie.memory.database import close_pool, run_migrations
+from hughie.memory import brain_store, conversation_store, episode_store, link_store
+from hughie.memory.database import close_pool, get_pool, run_migrations
+from hughie.memory.maintenance import run_all as run_maintenance
 from hughie.scheduler import start_scheduler, stop_scheduler
 from hughie.tools.mcp_loader import close_mcp_client
 from hughie.tools.registry import load_all_tools
@@ -87,6 +88,51 @@ class NoteUpdateRequest(BaseModel):
     type: str
     importance: float = 1.0
     status: str = "active"
+    fonte: str = "input_manual"
+    confianca: float | None = None
+    peso_temporal: float = 1.0
+    criado_por: str = "manual_admin"
+    metadados: dict[str, Any] = {}
+
+
+class NoteCreateRequest(NoteUpdateRequest):
+    pass
+
+
+def _serialize_note(note: brain_store.BrainNote) -> dict[str, Any]:
+    return {
+        "id": note.id,
+        "title": note.title,
+        "type": note.type,
+        "importance": note.importance,
+        "status": note.status,
+        "content": note.content,
+        "fonte": note.fonte,
+        "confianca": note.confianca,
+        "peso_temporal": note.peso_temporal,
+        "criado_por": note.criado_por,
+        "ultima_atualizacao": note.ultima_atualizacao.isoformat(),
+        "historico": note.historico,
+        "metadados": note.metadados,
+        "updated_at": note.updated_at.isoformat(),
+        "created_at": note.created_at.isoformat(),
+    }
+
+
+def _serialize_episode(episode: episode_store.Episode) -> dict[str, Any]:
+    return {
+        "id": episode.id,
+        "session_id": episode.session_id,
+        "created_at": episode.created_at.isoformat(),
+        "tarefa": episode.tarefa,
+        "resultado": episode.resultado,
+        "tempo_total_segundos": episode.tempo_total_segundos,
+        "arquivos_modificados": episode.arquivos_modificados,
+        "decisoes_tomadas": episode.decisoes_tomadas,
+        "erros_encontrados": episode.erros_encontrados,
+        "aprendizados": episode.aprendizados,
+        "node_ids_afetados": episode.node_ids_afetados,
+    }
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -420,15 +466,26 @@ async def get_note(note_id: str):
     note = await brain_store.get_note_by_id(note_id)
     if note is None:
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    return {
-        "id": note.id,
-        "title": note.title,
-        "type": note.type,
-        "importance": note.importance,
-        "status": note.status,
-        "content": note.content,
-        "updated_at": note.updated_at.isoformat(),
-    }
+    return _serialize_note(note)
+
+
+@app.post("/v1/brain/notes")
+async def create_note(req: NoteCreateRequest):
+    note = await brain_store.create_note(
+        title=req.title,
+        content=req.content,
+        note_type=req.type,
+        importance=req.importance,
+        status=req.status,
+        source_kind="manual_admin",
+        fonte=req.fonte,
+        confianca=req.confianca,
+        peso_temporal=req.peso_temporal,
+        criado_por=req.criado_por,
+        metadados=req.metadados,
+        metadata=req.metadados,
+    )
+    return _serialize_note(note)
 
 
 @app.patch("/v1/brain/notes/{note_id}")
@@ -441,18 +498,16 @@ async def update_note(note_id: str, req: NoteUpdateRequest):
         importance=req.importance,
         status=req.status,
         source_kind="manual_admin",
+        fonte=req.fonte,
+        confianca=req.confianca,
+        peso_temporal=req.peso_temporal,
+        criado_por=req.criado_por,
+        metadados=req.metadados,
+        metadata=req.metadados,
     )
     if note is None:
         return JSONResponse(status_code=404, content={"detail": "Not found"})
-    return {
-        "id": note.id,
-        "title": note.title,
-        "type": note.type,
-        "importance": note.importance,
-        "status": note.status,
-        "content": note.content,
-        "updated_at": note.updated_at.isoformat(),
-    }
+    return _serialize_note(note)
 
 
 @app.delete("/v1/brain/notes/{note_id}")
@@ -468,33 +523,17 @@ async def list_notes(note_type: str = Query(""), limit: int = Query(50)):
     notes = await brain_store.list_notes(limit=limit)
     if note_type:
         notes = [n for n in notes if n.type == note_type]
-    return [
-        {
-            "id": n.id,
-            "title": n.title,
-            "type": n.type,
-            "importance": n.importance,
-            "status": n.status,
-            "content": n.content,
-            "updated_at": n.updated_at.isoformat(),
-        }
-        for n in notes
-    ]
+    return [_serialize_note(n) for n in notes]
 
 
 @app.get("/v1/brain/search")
 async def search_notes(q: str = Query(...), limit: int = Query(5)):
     notes = await brain_store.search_notes(q, limit=limit)
-    return [
-        {
-            "id": n.id,
-            "title": n.title,
-            "type": n.type,
-            "importance": n.importance,
-            "content": n.content,
-        }
-        for n in notes
-    ]
+    episodes = await episode_store.search_similar_episodes(q, top_k=limit)
+    return {
+        "notes": [_serialize_note(n) for n in notes],
+        "episodes": [_serialize_episode(ep) for ep in episodes],
+    }
 
 
 @app.get("/v1/brain/graph")
@@ -508,6 +547,10 @@ async def brain_graph():
             "type": n.type or "fact",
             "importance": n.importance,
             "status": n.status,
+            "fonte": n.fonte,
+            "confianca": n.confianca,
+            "peso_temporal": n.peso_temporal,
+            "metadados": n.metadados,
         }
         for n in notes
     ]
@@ -517,21 +560,98 @@ async def brain_graph():
             edges.append({
                 "source": lnk.source_note_id,
                 "target": lnk.target_note_id,
-                "relation": lnk.relation_type,
+                "relation": lnk.tipo_relacao or lnk.relation_type,
                 "weight": lnk.weight,
+                "confianca": lnk.confianca,
+                "fonte": lnk.fonte,
+                "tipo_relacao": lnk.tipo_relacao or lnk.relation_type,
+                "criado_em": lnk.criado_em.isoformat() if lnk.criado_em else None,
             })
         elif lnk.target_kind in {"file", "directory"} and lnk.target_path:
             path_id = f"path:{lnk.target_path}"
             if not any(n["id"] == path_id for n in nodes):
                 name = lnk.target_path.split("/")[-1] or lnk.target_path
-                nodes.append({"id": path_id, "label": name, "type": lnk.target_kind, "importance": 0.5, "status": "active"})
+                nodes.append({
+                    "id": path_id,
+                    "label": name,
+                    "type": lnk.target_kind,
+                    "importance": 0.5,
+                    "status": "active",
+                    "fonte": lnk.fonte,
+                    "confianca": lnk.confianca,
+                    "peso_temporal": 1.0,
+                    "metadados": {"path": lnk.target_path},
+                })
             edges.append({
                 "source": lnk.source_note_id,
                 "target": path_id,
-                "relation": lnk.relation_type,
+                "relation": lnk.tipo_relacao or lnk.relation_type,
                 "weight": lnk.weight,
+                "confianca": lnk.confianca,
+                "fonte": lnk.fonte,
+                "tipo_relacao": lnk.tipo_relacao or lnk.relation_type,
+                "criado_em": lnk.criado_em.isoformat() if lnk.criado_em else None,
             })
     return {"nodes": nodes, "edges": edges}
+
+
+@app.get("/v1/brain/episodes")
+async def list_episodes(limit: int = Query(20)):
+    episodes = await episode_store.list_episodes(limit=limit)
+    return [_serialize_episode(ep) for ep in episodes]
+
+
+@app.get("/v1/brain/episodes/{episode_id}")
+async def get_episode(episode_id: str):
+    episode = await episode_store.get_episode(episode_id)
+    if episode is None:
+        return JSONResponse(status_code=404, content={"detail": "Not found"})
+    return _serialize_episode(episode)
+
+
+@app.post("/v1/brain/maintain")
+async def maintain_brain():
+    return await run_maintenance()
+
+
+@app.get("/v1/brain/stats")
+async def brain_stats():
+    notes = await brain_store.list_notes(limit=5000)
+    links = await link_store.list_all_links(limit=10000)
+    episodes = await episode_store.list_episodes(limit=5000)
+
+    source_distribution: dict[str, int] = {}
+    confidence_distribution = {"high": 0, "medium": 0, "low": 0}
+    for note in notes:
+        source_distribution[note.fonte] = source_distribution.get(note.fonte, 0) + 1
+        if note.confianca >= 0.8:
+            confidence_distribution["high"] += 1
+        elif note.confianca >= 0.5:
+            confidence_distribution["medium"] += 1
+        else:
+            confidence_distribution["low"] += 1
+
+    latest_maintenance = None
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        latest_maintenance = await conn.fetchrow(
+            """
+            SELECT run_at, decayed, garbage_collected, conflicts_resolved
+            FROM maintenance_runs
+            ORDER BY run_at DESC
+            LIMIT 1
+            """
+        )
+
+    return {
+        "total_nos": len(notes),
+        "total_arestas": len(links),
+        "distribuicao_por_fonte": source_distribution,
+        "distribuicao_por_confianca": confidence_distribution,
+        "episodios_criados": len(episodes),
+        "ultimo_gc": latest_maintenance["run_at"].isoformat() if latest_maintenance else None,
+        "ultima_manutencao": dict(latest_maintenance) if latest_maintenance else None,
+    }
 
 
 @app.get("/v1/sessions")

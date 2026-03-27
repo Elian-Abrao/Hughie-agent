@@ -114,4 +114,12 @@ CREATE TABLE IF NOT EXISTS episodes (
 
 CREATE INDEX IF NOT EXISTS episodes_session_id_idx ON episodes (session_id);
 CREATE INDEX IF NOT EXISTS episodes_created_at_idx ON episodes (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS maintenance_runs (
+    id BIGSERIAL PRIMARY KEY,
+    run_at TIMESTAMPTZ DEFAULT now(),
+    decayed INT DEFAULT 0,
+    garbage_collected INT DEFAULT 0,
+    conflicts_resolved INT DEFAULT 0
+);
 """
