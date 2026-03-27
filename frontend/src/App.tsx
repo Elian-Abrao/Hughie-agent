@@ -87,19 +87,19 @@ export default function App() {
       {/* ── Sidebar ── */}
       <aside
         className={clsx(
-          "relative flex shrink-0 flex-col border-r border-white/[0.07] bg-surface/70 backdrop-blur-md",
+          "relative flex shrink-0 flex-col border-r dark:border-white/[0.07] border-black/[0.09] bg-surface/70 backdrop-blur-md",
           "transition-all duration-200 ease-in-out",
           collapsed ? "w-[56px]" : "w-[240px]"
         )}
       >
         {/* Logo row */}
         <div className={clsx(
-          "flex h-14 shrink-0 items-center gap-2.5 overflow-hidden border-b border-white/[0.06]",
+          "flex h-14 shrink-0 items-center gap-2.5 overflow-hidden border-b dark:border-white/[0.06] border-black/[0.08]",
           collapsed ? "justify-center px-0" : "px-4"
         )}>
           <img src="/Hughie.svg" alt="Hughie" className="h-7 w-7 shrink-0 object-contain" />
           {!collapsed && (
-            <span className="whitespace-nowrap text-[13px] font-semibold text-[#e0e0f0] tracking-tight">
+            <span className="whitespace-nowrap text-[13px] font-semibold text-strong tracking-tight">
               Hughie
             </span>
           )}
@@ -111,14 +111,14 @@ export default function App() {
             <button
               onClick={newSession}
               title="Nova sessão"
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-white/[0.06] hover:text-text transition-colors"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-muted dark:hover:bg-white/[0.06] hover:bg-black/[0.05] hover:text-text transition-colors"
             >
               <IconPlus size={15} />
             </button>
           ) : (
             <button
               onClick={newSession}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-muted hover:bg-white/[0.06] hover:text-text transition-colors"
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-muted dark:hover:bg-white/[0.06] hover:bg-black/[0.05] hover:text-text transition-colors"
             >
               <IconPlus size={14} />
               <span>Nova sessão</span>
@@ -139,8 +139,8 @@ export default function App() {
                   "flex items-center gap-2.5 overflow-hidden rounded-lg text-[13px] transition-colors",
                   collapsed ? "mx-auto h-9 w-9 justify-center" : "px-3 py-2",
                   isActive
-                    ? "bg-white/[0.09] text-[#e0e0f8]"
-                    : "text-muted hover:bg-white/[0.05] hover:text-[#c0c0e0]"
+                    ? "dark:bg-white/[0.09] bg-black/[0.07] text-strong"
+                    : "text-muted dark:hover:bg-white/[0.05] hover:bg-black/[0.04] hover:text-muted-2"
                 )
               }
             >
@@ -173,8 +173,8 @@ export default function App() {
                       className={clsx(
                         "w-full rounded-lg px-3 py-2 text-left transition-colors",
                         active
-                          ? "bg-white/[0.09] text-[#d8d8f0]"
-                          : "text-muted hover:bg-white/[0.05] hover:text-[#b8b8d8]"
+                          ? "dark:bg-white/[0.09] bg-black/[0.07] text-text"
+                          : "text-muted dark:hover:bg-white/[0.05] hover:bg-black/[0.04] hover:text-muted-2"
                       )}
                     >
                       <div className="flex items-center justify-between gap-1 mb-0.5">
@@ -196,14 +196,14 @@ export default function App() {
 
         {/* Bottom actions */}
         <div className={clsx(
-          "mt-auto shrink-0 border-t border-white/[0.06] px-2 py-2 flex flex-col gap-0.5",
+          "mt-auto shrink-0 border-t dark:border-white/[0.06] border-black/[0.08] px-2 py-2 flex flex-col gap-0.5",
           collapsed && "items-center"
         )}>
           <button
             onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
             title={theme === "dark" ? "Tema claro" : "Tema escuro"}
             className={clsx(
-              "flex items-center gap-2.5 rounded-lg text-[13px] text-muted hover:bg-white/[0.05] hover:text-[#c0c0e0] transition-colors",
+              "flex items-center gap-2.5 rounded-lg text-[13px] text-muted dark:hover:bg-white/[0.05] hover:bg-black/[0.04] hover:text-muted-2 transition-colors",
               collapsed ? "h-9 w-9 justify-center" : "w-full px-3 py-2"
             )}
           >
@@ -214,7 +214,7 @@ export default function App() {
             onClick={toggleSidebar}
             title={collapsed ? "Expandir" : "Recolher"}
             className={clsx(
-              "flex items-center gap-2.5 rounded-lg text-[13px] text-muted hover:bg-white/[0.05] hover:text-[#c0c0e0] transition-colors",
+              "flex items-center gap-2.5 rounded-lg text-[13px] text-muted dark:hover:bg-white/[0.05] hover:bg-black/[0.04] hover:text-muted-2 transition-colors",
               collapsed ? "h-9 w-9 justify-center" : "w-full px-3 py-2"
             )}
           >

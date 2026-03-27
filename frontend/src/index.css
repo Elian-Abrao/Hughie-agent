@@ -4,16 +4,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Background dot grid ─────────────────────────────────────────────────── */
-body, #root {
-  background-color: rgb(var(--bg));
-  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
-  background-size: 28px 28px;
-  background-attachment: fixed;
-}
-
 :root {
   color-scheme: dark;
+  --grid-dot: rgba(255,255,255,0.07);
   --bg: 38 38 36;
   --surface: 44 44 41;
   --surface2: 52 52 49;
@@ -35,6 +28,7 @@ body, #root {
 
 :root[data-theme="light"] {
   color-scheme: light;
+  --grid-dot: rgba(0,0,0,0.07);
   --bg: 244 239 230;
   --surface: 250 246 240;
   --surface2: 239 233 224;
@@ -58,10 +52,17 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: rgb(var(--bg));
   color: rgb(var(--text));
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── Background dot grid ─────────────────────────────────────────────────── */
+body {
+  background-color: rgb(var(--bg));
+  background-image: radial-gradient(circle, var(--grid-dot) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────────────────── */

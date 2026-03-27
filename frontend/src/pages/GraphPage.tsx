@@ -125,9 +125,9 @@ export default function GraphPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="h-12 flex items-center justify-between px-5 border-b border-white/[0.07] flex-shrink-0 bg-surface/50 backdrop-blur-sm">
+      <div className="h-12 flex items-center justify-between px-5 border-b dark:border-white/[0.07] border-black/[0.09] flex-shrink-0 bg-surface/50 backdrop-blur-sm">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-[#d8d8f0]">Grafo de memória</span>
+          <span className="text-sm font-medium text-text">Grafo de memória</span>
           {!loading && (
             <span className="text-xs text-muted">
               {counts.nodes} nó{counts.nodes !== 1 ? "s" : ""} · {counts.edges} lig{counts.edges !== 1 ? "ações" : "ação"}
@@ -145,7 +145,7 @@ export default function GraphPage() {
           </div>
           <button
             onClick={load}
-            className="text-xs text-muted hover:text-[#d8d8f0] transition-colors px-2 py-1 rounded-md hover:bg-white/[0.06]"
+            className="text-xs text-muted hover:text-text transition-colors px-2 py-1 rounded-md dark:hover:bg-white/[0.06] hover:bg-black/[0.05]"
           >
             Atualizar
           </button>
@@ -174,13 +174,13 @@ export default function GraphPage() {
 
         {/* Node detail panel */}
         {selected && (
-          <div className="absolute top-4 right-4 w-72 max-h-[calc(100%-2rem)] flex flex-col bg-[#0f0f18]/95 backdrop-blur-md border border-white/[0.1] rounded-xl shadow-2xl animate-fadein overflow-hidden">
-            <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b border-white/[0.07] shrink-0">
+          <div className="absolute top-4 right-4 w-72 max-h-[calc(100%-2rem)] flex flex-col bg-surface dark:bg-[#0f0f18]/95 backdrop-blur-md border dark:border-white/[0.1] border-black/[0.12] rounded-xl shadow-2xl animate-fadein overflow-hidden">
+            <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b dark:border-white/[0.07] border-black/[0.08] shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: typeColor(selected.type) }} />
-                <h3 className="text-sm font-semibold text-[#e0e0ff] leading-snug">{selected.label}</h3>
+                <h3 className="text-sm font-semibold text-strong leading-snug">{selected.label}</h3>
               </div>
-              <button onClick={() => setSelected(null)} className="shrink-0 text-muted hover:text-[#d8d8f0] transition-colors mt-0.5">
+              <button onClick={() => setSelected(null)} className="shrink-0 text-muted hover:text-text transition-colors mt-0.5">
                 <IconX size={14} />
               </button>
             </div>
@@ -202,7 +202,7 @@ export default function GraphPage() {
                   <span className="text-xs text-muted">Carregando…</span>
                 </div>
               ) : noteDetail ? (
-                <div className="prose-chat text-[12px] leading-relaxed text-[#b8b8d8]">
+                <div className="prose-chat text-[12px] leading-relaxed text-muted">
                   <MarkdownContent content={noteDetail.content} />
                 </div>
               ) : selected.id.startsWith("path:") ? (
