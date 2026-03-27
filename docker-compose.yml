@@ -1,19 +1,54 @@
 services:
   db:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: hughie
-      POSTGRES_PASSWORD: hughie
-      POSTGRES_DB: hughie
+      POSTGRES_USER: ${DB_USER:-hughie}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hughie}
+      POSTGRES_DB: ${DB_NAME:-hughie}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hughie"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hughie}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  broker:
+    build:
+      context: ./providers/llm-broker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:47831:47831"
+    volumes:
+      - broker-data:/root/.config/llm-broker
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:47831/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hughie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ~/.ssh:/root/.ssh:ro
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    command: ["hughie", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
 volumes:
   pgdata:
+  broker-data:
