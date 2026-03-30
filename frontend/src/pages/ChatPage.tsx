@@ -10,6 +10,28 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  remember: "Memorizando…",
+  save_brain_note: "Salvando nota…",
+  search_brain_notes: "Buscando na memória…",
+  update_brain_note: "Atualizando nota…",
+  list_brain_notes: "Listando notas…",
+  get_brain_note: "Lendo nota…",
+  explore_brain_graph: "Explorando grafo…",
+  shell_exec: "Executando comando…",
+  ssh_exec: "Executando no servidor…",
+  read_file: "Lendo arquivo…",
+  write_file: "Escrevendo arquivo…",
+  list_directory: "Listando diretório…",
+  search_files: "Procurando arquivos…",
+  web_search: "Pesquisando na web…",
+  web_fetch: "Carregando página…",
+};
+
+function toolLabel(name: string): string {
+  return TOOL_LABELS[name] ?? `${name}…`;
+}
+
 export default function ChatPage() {
   const {
     sessionId,
@@ -84,7 +106,7 @@ export default function ChatPage() {
           updateMessage(assistantId, (msg) => ({
             ...msg,
             tools: [...msg.tools, ev.data.tool],
-            activity: [...msg.activity, `Tool chamada: ${ev.data.tool}`],
+            activity: [...msg.activity, toolLabel(ev.data.tool)],
           }));
         } else if (ev.event === "approval") {
           setPendingApproval({
@@ -168,7 +190,7 @@ export default function ChatPage() {
           updateMessage(pendingApproval.assistantId, (msg) => ({
             ...msg,
             tools: [...msg.tools, ev.data.tool],
-            activity: [...msg.activity, `Tool chamada: ${ev.data.tool}`],
+            activity: [...msg.activity, toolLabel(ev.data.tool)],
           }));
         } else if (ev.event === "approval") {
           setPendingApproval({
