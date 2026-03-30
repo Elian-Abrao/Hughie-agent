@@ -86,27 +86,114 @@ async def run_conflict_resolution(limit: int = 500) -> int:
     return resolved
 
 
+async def remove_stale_stubs(older_than_days: int = 7) -> dict[str, int]:
+    """
+    Clean up auto-generated stub notes.
+
+    Stubs are placeholder notes created by ensure_note_by_title when the LLM
+    references a concept that doesn't exist yet.  They accumulate silently and
+    pollute semantic search results if never filled in.
+
+    Rules:
+    - Orphan stubs (zero incoming AND outgoing links) → delete outright.
+    - Connected stubs (has at least one link) → promote to active with a
+      placeholder content so the agent fills them in on the next consolidation.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        stub_rows = await conn.fetch(
+            """
+            SELECT
+                n.id,
+                COUNT(DISTINCT out_l.id) AS outgoing_links,
+                COUNT(DISTINCT in_l.id)  AS incoming_links
+            FROM brain_notes n
+            LEFT JOIN brain_links out_l ON out_l.source_note_id = n.id
+            LEFT JOIN brain_links in_l  ON in_l.target_note_id  = n.id
+            WHERE n.status = 'stub'
+              AND n.created_at < now() - ($1::int * interval '1 day')
+            GROUP BY n.id
+            """,
+            older_than_days,
+        )
+
+        if not stub_rows:
+            logger.info("Stub cleanup: no stale stubs (older_than_days=%d)", older_than_days)
+            return {"deleted": 0, "promoted": 0}
+
+        to_delete = [r["id"] for r in stub_rows if r["incoming_links"] == 0 and r["outgoing_links"] == 0]
+        to_promote = [r["id"] for r in stub_rows if r["incoming_links"] > 0 or r["outgoing_links"] > 0]
+
+        deleted = 0
+        if to_delete:
+            # brain_links has ON DELETE CASCADE, but be explicit for safety
+            await conn.execute(
+                "DELETE FROM brain_links WHERE source_note_id = ANY($1::uuid[])",
+                to_delete,
+            )
+            result = await conn.execute(
+                "DELETE FROM brain_notes WHERE id = ANY($1::uuid[])",
+                to_delete,
+            )
+            deleted = int(result.split()[-1])
+
+        promoted = 0
+        if to_promote:
+            # Replace generic stub content so the note is searchable and the
+            # agent will enrich it on the next consolidation pass.
+            await conn.execute(
+                """
+                UPDATE brain_notes
+                SET status     = 'active',
+                    importance = GREATEST(importance, 0.5),
+                    confianca  = GREATEST(confianca, 0.4),
+                    content    = '[Conceito registrado como referência. Aguardando enriquecimento pelo agente.]',
+                    updated_at = now()
+                WHERE id = ANY($1::uuid[])
+                """,
+                to_promote,
+            )
+            promoted = len(to_promote)
+
+    logger.info(
+        "Stub cleanup: deleted %d orphan stub(s), promoted %d connected stub(s)",
+        deleted,
+        promoted,
+    )
+    return {"deleted": deleted, "promoted": promoted}
+
+
 async def run_all() -> dict[str, int]:
     logger.info("Maintenance: starting full run")
     try:
         decay = await run_decay()
         gc = await run_garbage_collection()
         conflict = await run_conflict_resolution()
+        stubs = await remove_stale_stubs()
     except Exception:
         logger.exception("Maintenance: full run failed")
         raise
 
-    result = {"decayed": decay, "garbage_collected": gc, "conflicts_resolved": conflict}
+    result = {
+        "decayed": decay,
+        "garbage_collected": gc,
+        "conflicts_resolved": conflict,
+        "stubs_deleted": stubs["deleted"],
+        "stubs_promoted": stubs["promoted"],
+    }
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO maintenance_runs (decayed, garbage_collected, conflicts_resolved)
-            VALUES ($1, $2, $3)
+            INSERT INTO maintenance_runs
+                (decayed, garbage_collected, conflicts_resolved, stubs_deleted, stubs_promoted)
+            VALUES ($1, $2, $3, $4, $5)
             """,
             decay,
             gc,
             conflict,
+            stubs["deleted"],
+            stubs["promoted"],
         )
     logger.info("Maintenance: full run finished %s", result)
     return result

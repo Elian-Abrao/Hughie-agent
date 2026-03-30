@@ -122,4 +122,12 @@ CREATE TABLE IF NOT EXISTS maintenance_runs (
     garbage_collected INT DEFAULT 0,
     conflicts_resolved INT DEFAULT 0
 );
+
+ALTER TABLE maintenance_runs ADD COLUMN IF NOT EXISTS stubs_deleted INT DEFAULT 0;
+ALTER TABLE maintenance_runs ADD COLUMN IF NOT EXISTS stubs_promoted INT DEFAULT 0;
+
+-- Partial index to speed up stub cleanup queries
+CREATE INDEX IF NOT EXISTS brain_notes_stub_created_at_idx
+    ON brain_notes (created_at)
+    WHERE status = 'stub';
 """
