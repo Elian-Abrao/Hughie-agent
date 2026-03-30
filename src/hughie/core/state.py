@@ -1,6 +1,6 @@
 from typing import Annotated
 from langgraph.graph.message import add_messages
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 
 class HughieState(TypedDict):
@@ -8,3 +8,4 @@ class HughieState(TypedDict):
     history: list                             # histórico anterior carregado do DB
     session_id: str
     brain_context: str
+    user_message_presaved: NotRequired[bool]  # True quando endpoint já salvou a msg do user

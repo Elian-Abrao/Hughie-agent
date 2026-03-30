@@ -110,7 +110,7 @@ async def save_memory(state: HughieState) -> dict:
         if last_user and last_assistant:
             break
 
-    if last_user:
+    if last_user and not state.get("user_message_presaved"):
         await conversation_store.save_turn(session_id, "user", str(last_user.content))
     if last_assistant:
         await conversation_store.save_turn(

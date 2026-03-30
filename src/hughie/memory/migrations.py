@@ -130,4 +130,15 @@ ALTER TABLE maintenance_runs ADD COLUMN IF NOT EXISTS stubs_promoted INT DEFAULT
 CREATE INDEX IF NOT EXISTS brain_notes_stub_created_at_idx
     ON brain_notes (created_at)
     WHERE status = 'stub';
+
+CREATE TABLE IF NOT EXISTS chat_stream_events (
+    id BIGSERIAL PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    data TEXT NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS chat_stream_events_session_idx
+    ON chat_stream_events (session_id, id);
 """
