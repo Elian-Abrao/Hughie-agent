@@ -386,7 +386,7 @@ async def _extract_linknotes(
     return result if isinstance(result, list) else []
 
 
-async def _merge_or_rewrite(existing_content: str, new_info: str) -> str:
+async def merge_note_content(existing_content: str, new_info: str) -> str:
     prompt = render_prompt(
         "merge",
         existing_content=existing_content,
@@ -607,7 +607,7 @@ async def _process_linknotes(
             similar = await brain_store.search_notes_with_distance(title, limit=1, threshold=0.35)
         metadata = {"linknote": True}
         if exact is not None:
-            merged = await _merge_or_rewrite(exact.content, content)
+            merged = await merge_note_content(exact.content, content)
             note = await brain_store.update_note(
                 str(exact.id),
                 merged,
@@ -620,7 +620,7 @@ async def _process_linknotes(
             )
         elif similar:
             existing, _ = similar[0]
-            merged = await _merge_or_rewrite(existing.content, content)
+            merged = await merge_note_content(existing.content, content)
             note = await brain_store.update_note(
                 str(existing.id),
                 merged,

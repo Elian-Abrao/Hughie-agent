@@ -1,43 +1,84 @@
+import asyncio
+import logging
 from typing import Annotated
 
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
 from hughie.memory import brain_store, link_store
-from hughie.memory.consolidator import run_consolidation
+from hughie.memory.consolidator import merge_note_content, run_consolidation
+
+logger = logging.getLogger(__name__)
 
 
 @tool
 async def save_brain_note(title: str, content: str, note_type: str = "fact") -> str:
-    """Save a note about the user to long-term memory.
+    """Save a specific note directly to long-term memory with explicit content.
 
-    Use proactively whenever the conversation contains preferences, decisions,
-    projects, people, or patterns worth remembering — without waiting for an
-    explicit request.
+    Use when you have concrete, specific content to store verbatim.
+    For extracting memory from a conversation, prefer remember() — it's faster
+    and creates links automatically.
 
-    IMPORTANT: After calling this tool, always call create_linknote immediately
-    to connect the new note to related notes, files and directories in the graph.
-    A note without links is isolated and hard to discover later.
-
-    If a note with this title already exists, the content is merged automatically.
+    Returns immediately. If the note already exists, the LLM merge runs in background.
 
     Args:
         title: Specific, self-explanatory title (e.g. "Decisão: nginx como proxy do Hughie frontend")
-        content: Full content of the note — one concept only, no mixing of topics
+        content: Full content — one concept only, no mixing of topics
         note_type: One of: preference, pattern, project, person, fact
     """
     existing = await brain_store.get_note_by_title(title)
     if existing is not None:
-        merged = f"{existing.content}\n\n{content}"
+        # Save immediately with simple append so the note is never stale
+        quick_merged = f"{existing.content}\n\n{content}"
         note = await brain_store.update_note(
             str(existing.id),
-            merged,
+            quick_merged,
             note_type=note_type,
             source_kind="agent_request",
         )
-        return f"Note updated (merged): '{note.title}' (id: {note.id})"
+        # Rewrite with LLM in background — don't block the agent
+        async def _rewrite(note_id: str, old: str, new: str) -> None:
+            try:
+                merged = await merge_note_content(old, new)
+                await brain_store.update_note(note_id, merged, source_kind="agent_request")
+            except Exception as exc:
+                logger.warning("Background merge failed for note %s: %s", note_id, exc)
+        asyncio.create_task(_rewrite(str(existing.id), existing.content, content))
+        return f"Note updated: '{note.title}' (id: {note.id})"
     note = await brain_store.save_note(title, content, note_type, source_kind="agent_request")
     return f"Note saved: '{note.title}' (id: {note.id})"
+
+
+@tool
+async def remember(
+    focus: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Extract and store memory from the current conversation. Returns immediately.
+
+    Use this as the PRIMARY memory tool. Call it once after any exchange that
+    contains decisions, preferences, projects, people, or patterns worth keeping.
+
+    It extracts structured notes WITH links from the conversation and saves them
+    in the background — you can respond to the user right away without waiting.
+
+    This replaces the old save_brain_note + create_linknote two-step flow.
+
+    Args:
+        focus: What specifically to capture (e.g. "decisão de usar pgvector para embeddings").
+    """
+    session_id = state.get("session_id", "")
+    if not session_id:
+        return "Error: could not determine session."
+
+    async def _consolidate() -> None:
+        try:
+            await run_consolidation(session_id, hint=focus)
+        except Exception as exc:
+            logger.warning("Background consolidation failed: %s", exc)
+
+    asyncio.create_task(_consolidate())
+    return "Memorizado."
 
 
 @tool
@@ -323,12 +364,11 @@ async def explore_brain_graph(titles: list[str], depth: int = 2) -> str:
 
 
 BRAIN_TOOLS = [
+    remember,
     save_brain_note,
     search_brain_notes,
     update_brain_note,
     list_brain_notes,
     get_brain_note,
     explore_brain_graph,
-    consolidate_memory,
-    create_linknote,
 ]

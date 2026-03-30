@@ -56,7 +56,7 @@ Retorne **APENAS** um objeto JSON válido, sem markdown, sem explicações:
       "titulo": "título específico e autoexplicativo",
       "conteudo": "conteúdo focado no único conceito desta nota",
       "tipo": "preference|pattern|project|person|fact",
-      "importance": 0.0,
+      "importance": 1.0,
       "links": [
         {
           "target_kind": "note|file|directory",
