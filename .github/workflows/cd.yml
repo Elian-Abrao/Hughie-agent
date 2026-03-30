@@ -131,37 +131,30 @@ jobs:
 
   deploy-production:
     name: Deploy to Production
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - Linux
+      - X64
+      - home-server
     needs: publish-images
     environment:
       name: production
 
     steps:
-      - name: Configure SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-          SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p "${SSH_PORT:-22}" "${SSH_HOST}" >> ~/.ssh/known_hosts
-
-      - name: Run remote deploy
+      - name: Run production deploy
         env:
           PROD_APP_DIR: ${{ secrets.PROD_APP_DIR }}
-          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
-          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
-          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           IMAGE_NAMESPACE: ${{ needs.publish-images.outputs.image_namespace }}
           IMAGE_TAG: ${{ needs.publish-images.outputs.image_tag }}
         run: |
-          ssh -p "${PROD_SSH_PORT:-22}" "${PROD_SSH_USER}@${PROD_SSH_HOST}" \
-            "cd '${PROD_APP_DIR}' && \
-             git pull --ff-only origin main && \
-             chmod +x scripts/deploy-prod.sh && \
-             SKIP_GIT_PULL=1 IMAGE_NAMESPACE='${IMAGE_NAMESPACE}' IMAGE_TAG='${IMAGE_TAG}' GHCR_USERNAME='${GHCR_USERNAME}' GHCR_TOKEN='${GHCR_TOKEN}' ./scripts/deploy-prod.sh"
+          cd "${PROD_APP_DIR}"
+          git pull --ff-only origin main
+          chmod +x scripts/deploy-prod.sh
+          SKIP_GIT_PULL=1 \
+          IMAGE_NAMESPACE="${IMAGE_NAMESPACE}" \
+          IMAGE_TAG="${IMAGE_TAG}" \
+          GHCR_USERNAME="${GHCR_USERNAME}" \
+          GHCR_TOKEN="${GHCR_TOKEN}" \
+          ./scripts/deploy-prod.sh
