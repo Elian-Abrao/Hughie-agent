@@ -49,6 +49,10 @@ Além disso, ele valida os endpoints de saúde do backend, broker e frontend.
 
 Use `.env.production.example` como base para o `.env` no servidor.
 
+Guia operacional:
+
+- [docs/deploy.md](/home/elian/projetos/pessoal/open-source/Hughie-agent/docs/deploy.md)
+
 ## CI/CD
 
 ### CI
