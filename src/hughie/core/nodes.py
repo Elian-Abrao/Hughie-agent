@@ -28,7 +28,7 @@ def _get_llm() -> CodexChatModel:
 
 
 async def retrieve_context(state: HughieState) -> dict:
-    """Load ranked RAG context and conversation history from DB."""
+    """Load ranked RAG context and conversation history from DB — in parallel."""
     session_id = state["session_id"]
 
     user_text = ""
@@ -38,10 +38,19 @@ async def retrieve_context(state: HughieState) -> dict:
             break
 
     task_context = "\n".join(str(msg.content) for msg in state["messages"] if getattr(msg, "content", ""))
-    rag_payload = await retrieve_context_v2(query=user_text, task_context=task_context, top_k=10) if user_text else {"context": ""}
-    brain_context = rag_payload["context"]
 
-    turns = await conversation_store.get_recent(session_id, limit=20)
+    async def _rag() -> dict:
+        if not user_text:
+            return {"context": ""}
+        return await retrieve_context_v2(query=user_text, task_context=task_context, top_k=10)
+
+    # RAG search and history fetch are independent — run concurrently
+    rag_payload, turns = await asyncio.gather(
+        _rag(),
+        conversation_store.get_recent(session_id, limit=20),
+    )
+
+    brain_context = rag_payload["context"]
     history = []
     for turn in turns:
         if turn.role == "user":

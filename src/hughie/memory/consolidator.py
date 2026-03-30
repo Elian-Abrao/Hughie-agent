@@ -585,29 +585,66 @@ def _estimate_session_duration_seconds(turns: list[Any]) -> int | None:
     return max(0, int((max(timestamps) - min(timestamps)).total_seconds()))
 
 
+async def _resolve_note_match(
+    title: str,
+) -> tuple[brain_store.BrainNote | None, brain_store.BrainNote | None]:
+    """Return (exact, fuzzy) for a note title. Safe to run in parallel."""
+    exact = await brain_store.get_note_by_title(title)
+    if exact is not None:
+        return exact, None
+    similar = await brain_store.search_notes_with_distance(title, limit=1, threshold=0.35)
+    return None, (similar[0][0] if similar else None)
+
+
 async def _process_linknotes(
     notes: list[dict[str, Any]],
     conversation_text: str,
     path_cache: dict[str, str | None],
 ) -> tuple[int, list[str]]:
+    # ── Filter valid notes ─────────────────────────────────────────────────────
+    valid = [
+        n for n in notes
+        if str(n.get("titulo") or "").strip() and str(n.get("conteudo") or "").strip()
+    ]
+    if not valid:
+        return 0, []
+
+    # ── Phase 1: parallel DB lookups (fast, no LLM) ───────────────────────────
+    matches: list[tuple[brain_store.BrainNote | None, brain_store.BrainNote | None]] = list(
+        await asyncio.gather(*[
+            _resolve_note_match(str(n.get("titulo") or "").strip())
+            for n in valid
+        ])
+    )
+
+    # ── Phase 2: parallel LLM merges (slow — run all at once) ─────────────────
+    async def _merge_content(
+        note_data: dict[str, Any],
+        exact: brain_store.BrainNote | None,
+        fuzzy: brain_store.BrainNote | None,
+    ) -> str:
+        content = str(note_data.get("conteudo") or "").strip()
+        existing = exact or fuzzy
+        if existing is not None:
+            return await merge_note_content(existing.content, content)
+        return content
+
+    merged_contents: list[str] = list(await asyncio.gather(*[
+        _merge_content(n, ex, fz)
+        for n, (ex, fz) in zip(valid, matches)
+    ]))
+
+    # ── Phase 3: sequential writes + link resolution ───────────────────────────
     count = 0
     affected_node_ids: list[str] = []
-    for note_data in notes:
+    metadata_base = {"linknote": True}
+
+    for note_data, (exact, fuzzy), merged in zip(valid, matches, merged_contents):
         title = str(note_data.get("titulo") or "").strip()
-        content = str(note_data.get("conteudo") or "").strip()
         note_type = str(note_data.get("tipo") or "fact").strip() or "fact"
         importance = float(note_data.get("importance") or 0.8)
 
-        if not title or not content:
-            continue
-
-        exact = await brain_store.get_note_by_title(title)
-        similar = []
-        if exact is None:
-            similar = await brain_store.search_notes_with_distance(title, limit=1, threshold=0.35)
-        metadata = {"linknote": True}
         if exact is not None:
-            merged = await merge_note_content(exact.content, content)
             note = await brain_store.update_note(
                 str(exact.id),
                 merged,
@@ -616,30 +653,28 @@ async def _process_linknotes(
                 importance=max(exact.importance, importance),
                 status="active",
                 source_kind="auto_worker",
-                metadata={**exact.metadata, **metadata},
+                metadata={**exact.metadata, **metadata_base},
             )
-        elif similar:
-            existing, _ = similar[0]
-            merged = await merge_note_content(existing.content, content)
+        elif fuzzy is not None:
             note = await brain_store.update_note(
-                str(existing.id),
+                str(fuzzy.id),
                 merged,
                 title=title,
                 note_type=note_type,
-                importance=max(existing.importance, importance),
+                importance=max(fuzzy.importance, importance),
                 status="active",
                 source_kind="auto_worker",
-                metadata={**existing.metadata, **metadata},
+                metadata={**fuzzy.metadata, **metadata_base},
             )
         else:
             note = await brain_store.save_note(
                 title,
-                content,
+                merged,
                 note_type,
                 importance,
                 status="active",
                 source_kind="auto_worker",
-                metadata=metadata,
+                metadata=metadata_base,
             )
 
         if note is None:
@@ -780,16 +815,22 @@ async def run_consolidation(session_id: str, hint: str = "") -> int:
         settings.local_machine_host,
     )
 
-    count, affected_node_ids = await _process_linknotes(notes, conversation_text, path_cache)
+    # note_titles are extracted from raw LLM output — available before process_linknotes
+    note_titles = [str(n.get("titulo") or "").strip() for n in notes if str(n.get("titulo") or "").strip()]
+    has_tool_calls = _session_has_productive_tool_calls(turns)
 
-    if _session_has_productive_tool_calls(turns):
-        episode_payload = await _extract_episode(
-            session_id,
-            conversation_text,
-            turns,
-            [str(note.get("titulo") or "").strip() for note in notes if str(note.get("titulo") or "").strip()],
-        )
-        if episode_payload:
+    async def _maybe_extract_episode() -> dict[str, Any] | None:
+        if not has_tool_calls:
+            return None
+        return await _extract_episode(session_id, conversation_text, turns, note_titles)
+
+    # Run note processing and episode extraction in parallel — they don't depend on each other
+    (count, affected_node_ids), episode_payload = await asyncio.gather(
+        _process_linknotes(notes, conversation_text, path_cache),
+        _maybe_extract_episode(),
+    )
+
+    if episode_payload:
             promoted_learning_ids = await _promote_learnings_to_graph(
                 episode_payload.get("aprendizados", []),
                 affected_node_ids,
