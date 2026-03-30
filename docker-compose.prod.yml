@@ -1,0 +1,61 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-hughie}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hughie}
+      POSTGRES_DB: ${DB_NAME:-hughie}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-hughie}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  broker:
+    image: ${IMAGE_NAMESPACE:?missing IMAGE_NAMESPACE}/broker:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:47831:47831"
+    volumes:
+      - broker-data:/root/.codex-bridge/auth
+    environment:
+      CODEX_BRIDGE_AUTH_STORE_PATH: /root/.codex-bridge/auth/codex-session.json
+      CODEX_BRIDGE_DISABLE_KEYRING: "1"
+    env_file: .env
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:47831/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hughie:
+    image: ${IMAGE_NAMESPACE:?missing IMAGE_NAMESPACE}/hughie:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ~/.ssh:/ssh-host:ro
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    command: ["hughie", "serve", "--host", "0.0.0.0", "--port", "8000"]
+
+  frontend:
+    image: ${IMAGE_NAMESPACE:?missing IMAGE_NAMESPACE}/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - hughie
+
+volumes:
+  pgdata:
+  broker-data:
