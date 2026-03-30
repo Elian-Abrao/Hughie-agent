@@ -1,0 +1,25 @@
+{
+  "name": "Hughie",
+  "short_name": "Hughie",
+  "description": "Seu agente pessoal persistente",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#D86C1B",
+  "background_color": "#20201E",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/Hughie.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/Hughie.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
