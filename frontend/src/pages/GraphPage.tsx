@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
-import { fetchBrainGraph, fetchNote } from "../api/client";
+import { fetchBrainGraph, fetchNote, updateNote, deleteNote } from "../api/client";
 import type { GraphData, GraphNode, BrainNote } from "../api/client";
 import { MarkdownContent } from "../components/MarkdownContent";
-import { IconX } from "../components/Icons";
+import { IconX, IconEdit, IconTrash, IconCheck } from "../components/Icons";
 
 const TYPE_COLOR: Record<string, string> = {
   preference: "#7dd3fc",
@@ -34,6 +34,9 @@ export default function GraphPage() {
   const [noteDetail, setNoteDetail]   = useState<BrainNote | null>(null);
   const [loadingNote, setLoadingNote] = useState(false);
   const [loading, setLoading]         = useState(true);
+  const [editing, setEditing]         = useState(false);
+  const [draft, setDraft]             = useState("");
+  const [saving, setSaving]           = useState(false);
   const [typeFilter, setTypeFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [minConfidence, setMinConfidence] = useState(0);
@@ -75,6 +78,7 @@ export default function GraphPage() {
 
   // Fetch note detail on node click
   useEffect(() => {
+    setEditing(false);
     if (!selected) { setNoteDetail(null); return; }
     if (selected.id.startsWith("path:")) { setNoteDetail(null); return; }
     setLoadingNote(true);
@@ -158,17 +162,17 @@ export default function GraphPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b dark:border-white/[0.08] border-black/[0.08]">
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="rounded-lg bg-surface px-3 py-2 text-sm">
+      <div className="flex items-center gap-3 px-4 py-3 border-b dark:border-white/[0.08] border-black/[0.08] overflow-x-auto">
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="flex-shrink-0 rounded-lg bg-surface px-3 py-2 text-sm">
           <option value="">Todos os tipos</option>
           {availableTypes.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="rounded-lg bg-surface px-3 py-2 text-sm">
+        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="flex-shrink-0 rounded-lg bg-surface px-3 py-2 text-sm">
           <option value="">Todas as fontes</option>
           {availableSources.map((value) => <option key={value} value={value}>{value}</option>)}
         </select>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <span>Confiança mínima</span>
+        <label className="flex flex-shrink-0 items-center gap-2 text-sm text-muted">
+          <span className="whitespace-nowrap">Confiança mínima</span>
           <input type="range" min={0} max={1} step={0.1} value={minConfidence} onChange={(e) => setMinConfidence(Number(e.target.value))} />
           <span>{minConfidence.toFixed(1)}</span>
         </label>
@@ -194,17 +198,67 @@ export default function GraphPage() {
 
         <div ref={containerRef} className="w-full h-full" />
 
-        {/* Node detail panel */}
+        {/* Node detail panel — bottom sheet on mobile, top-right on desktop */}
         {selected && (
-          <div className="absolute top-4 right-4 w-72 max-h-[calc(100%-2rem)] flex flex-col bg-surface dark:bg-[#0f0f18]/95 backdrop-blur-md border dark:border-white/[0.1] border-black/[0.12] rounded-xl shadow-2xl animate-fadein overflow-hidden">
+          <div className="absolute flex flex-col bg-surface dark:bg-[#0f0f18]/95 backdrop-blur-md border dark:border-white/[0.1] border-black/[0.12] rounded-xl shadow-2xl animate-fadein overflow-hidden left-2 right-2 bottom-2 max-h-[55vh] sm:left-auto sm:bottom-auto sm:top-4 sm:right-4 sm:w-72 sm:max-h-[calc(100%-2rem)]">
             <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3 border-b dark:border-white/[0.07] border-black/[0.08] shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: typeColor(selected.type) }} />
                 <h3 className="text-sm font-semibold text-strong leading-snug">{selected.label}</h3>
               </div>
-              <button onClick={() => setSelected(null)} className="shrink-0 text-muted hover:text-text transition-colors mt-0.5">
-                <IconX size={14} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                {!selected.id.startsWith("path:") && !editing && (
+                  <>
+                    <button
+                      onClick={() => { setDraft(noteDetail?.content ?? ""); setEditing(true); }}
+                      className="text-muted hover:text-text transition-colors p-0.5"
+                      title="Editar nota"
+                    >
+                      <IconEdit size={13} />
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Excluir esta nota?")) return;
+                        await deleteNote(selected.id);
+                        setSelected(null);
+                        load();
+                      }}
+                      className="text-muted hover:text-red-400 transition-colors p-0.5"
+                      title="Excluir nota"
+                    >
+                      <IconTrash size={13} />
+                    </button>
+                  </>
+                )}
+                {editing && (
+                  <button
+                    onClick={async () => {
+                      setSaving(true);
+                      try {
+                        const updated = await updateNote(selected.id, {
+                          title: noteDetail?.title ?? selected.label,
+                          content: draft,
+                          type: noteDetail?.type ?? selected.type,
+                          importance: noteDetail?.importance ?? selected.importance ?? 1,
+                          status: noteDetail?.status ?? selected.status ?? "active",
+                        });
+                        setNoteDetail(updated);
+                        setEditing(false);
+                      } finally {
+                        setSaving(false);
+                      }
+                    }}
+                    disabled={saving}
+                    className="text-accent hover:text-accent-h transition-colors p-0.5 disabled:opacity-50"
+                    title="Salvar"
+                  >
+                    <IconCheck size={13} />
+                  </button>
+                )}
+                <button onClick={() => { setSelected(null); setEditing(false); }} className="text-muted hover:text-text transition-colors p-0.5">
+                  <IconX size={14} />
+                </button>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 px-4 py-2 shrink-0 text-xs text-muted">
@@ -231,6 +285,13 @@ export default function GraphPage() {
                   <div className="w-3.5 h-3.5 border border-accent border-t-transparent rounded-full animate-spin-slow" />
                   <span className="text-xs text-muted">Carregando…</span>
                 </div>
+              ) : editing ? (
+                <textarea
+                  className="w-full h-48 resize-none rounded-lg border border-border bg-surface2 px-3 py-2 text-xs font-mono text-text outline-none focus:border-accent"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  autoFocus
+                />
               ) : noteDetail ? (
                 <div className="prose-chat text-[12px] leading-relaxed text-muted">
                   <MarkdownContent content={noteDetail.content} />

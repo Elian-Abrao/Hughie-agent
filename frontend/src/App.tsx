@@ -5,11 +5,13 @@ import {
   IconBrain,
   IconChat,
   IconChevron,
-  IconTrash,
   IconGraph,
+  IconMenu,
   IconMoon,
   IconPlus,
   IconSun,
+  IconTrash,
+  IconX,
 } from "./components/Icons";
 import { deleteSession, fetchSessionMessages, fetchSessions } from "./api/client";
 import type { Session } from "./api/client";
@@ -36,6 +38,7 @@ export default function App() {
     () => (localStorage.getItem("theme") as "dark" | "light") || "dark"
   );
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
 
   const loadSessions = useCallback(async () => {
     setSessions(await fetchSessions());
@@ -99,10 +102,11 @@ export default function App() {
 
   return (
     <div className="flex h-full overflow-hidden text-text">
-      {/* ── Sidebar ── */}
+
+      {/* ── Desktop Sidebar ── */}
       <aside
         className={clsx(
-          "relative flex shrink-0 flex-col border-r dark:border-white/[0.07] border-black/[0.09] bg-surface/70 backdrop-blur-md",
+          "hidden sm:flex flex-col relative shrink-0 border-r dark:border-white/[0.07] border-black/[0.09] bg-surface/70 backdrop-blur-md",
           "transition-all duration-200 ease-in-out",
           collapsed ? "w-[56px]" : "w-[240px]"
         )}
@@ -259,14 +263,132 @@ export default function App() {
         </div>
       </aside>
 
-      {/* ── Main ── */}
-      <main className="min-w-0 flex-1 overflow-hidden">
-        <Routes>
-          <Route path="/"       element={<ChatPage />}   />
-          <Route path="/memory" element={<MemoryPage />} />
-          <Route path="/graph"  element={<GraphPage />}  />
-        </Routes>
-      </main>
+      {/* ── Main + spacer wrapper ── */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <Routes>
+            <Route path="/"       element={<ChatPage />}   />
+            <Route path="/memory" element={<MemoryPage />} />
+            <Route path="/graph"  element={<GraphPage />}  />
+          </Routes>
+        </main>
+        {/* Reserve space for the fixed mobile bottom nav bar */}
+        <div
+          className="shrink-0 sm:hidden"
+          style={{ height: "calc(3.5rem + env(safe-area-inset-bottom, 0px))" }}
+        />
+      </div>
+
+      {/* ── Mobile sessions drawer ── */}
+      {mobileSessionsOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col sm:hidden animate-fadein"
+             style={{ background: "rgb(var(--surface))" }}>
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-4">
+            <span className="text-sm font-semibold text-strong">Sessões</span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:text-text transition-colors"
+              >
+                {theme === "dark" ? <IconSun size={16} /> : <IconMoon size={16} />}
+              </button>
+              <button
+                onClick={() => setMobileSessionsOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:text-text transition-colors"
+              >
+                <IconX size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="px-4 py-3 border-b border-border shrink-0">
+            <button
+              onClick={() => { newSession(); setMobileSessionsOpen(false); }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white hover:bg-accent-h transition-colors"
+            >
+              <IconPlus size={15} />
+              Nova sessão
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto py-2 px-3 space-y-0.5">
+            {sessions.length === 0 ? (
+              <p className="py-8 text-sm text-muted text-center">Sem histórico ainda</p>
+            ) : (
+              sessions.map((s) => {
+                const active = s.session_id === sessionId && location.pathname === "/";
+                return (
+                  <div
+                    key={s.session_id}
+                    className={clsx(
+                      "group flex items-start gap-1 rounded-xl transition-colors",
+                      active ? "bg-accent-dim" : "hover:bg-surface2"
+                    )}
+                  >
+                    <button
+                      onClick={() => { openSession(s.session_id); setMobileSessionsOpen(false); }}
+                      className="min-w-0 flex-1 px-3 py-3 text-left"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono text-xs text-muted/70">{s.session_id.slice(0, 10)}</span>
+                        <span className="text-[11px] text-muted/50">{reltime(s.last_at)}</span>
+                      </div>
+                      <p className="truncate text-sm text-text leading-snug">{s.last_message}</p>
+                    </button>
+                    <button
+                      onClick={() => void removeSession(s.session_id)}
+                      className="mr-2 mt-3 shrink-0 rounded-lg p-2 text-muted hover:text-red-400 hover:bg-surface3 transition-colors"
+                    >
+                      <IconTrash size={15} />
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Safe area bottom spacer inside drawer */}
+          <div style={{ height: "calc(3.5rem + env(safe-area-inset-bottom, 0px))" }} className="shrink-0" />
+        </div>
+      )}
+
+      {/* ── Mobile bottom tab bar ── */}
+      <nav
+        className="fixed bottom-0 inset-x-0 sm:hidden z-40 border-t border-border bg-surface/95 backdrop-blur-md flex items-center justify-around"
+        style={{ height: "calc(3.5rem + env(safe-area-inset-bottom, 0px))", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      >
+        {NAV.map(({ to, label, Icon, exact }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={exact}
+            onClick={() => setMobileSessionsOpen(false)}
+            className={({ isActive }) =>
+              clsx(
+                "flex flex-col items-center gap-0.5 px-5 py-1 rounded-lg text-[11px] transition-colors",
+                isActive && !mobileSessionsOpen ? "text-accent" : "text-muted"
+              )
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <Icon size={19} className={clsx(isActive && !mobileSessionsOpen && "text-accent")} />
+                <span>{label}</span>
+              </>
+            )}
+          </NavLink>
+        ))}
+        <button
+          onClick={() => setMobileSessionsOpen(v => !v)}
+          className={clsx(
+            "flex flex-col items-center gap-0.5 px-5 py-1 rounded-lg text-[11px] transition-colors",
+            mobileSessionsOpen ? "text-accent" : "text-muted"
+          )}
+        >
+          <IconMenu size={19} className={clsx(mobileSessionsOpen && "text-accent")} />
+          <span>Sessões</span>
+        </button>
+      </nav>
     </div>
   );
 }

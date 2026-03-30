@@ -223,14 +223,14 @@ export default function ChatPage() {
           {messages.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="mx-auto max-w-2xl space-y-6 px-5">
+            <div className="mx-auto max-w-2xl space-y-6 px-3 sm:px-5">
               {messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)}
               <div ref={endRef} />
             </div>
           )}
         </div>
 
-        <div className="border-t border-border/50 bg-surface px-5 pb-5 pt-3">
+        <div className="border-t border-border/50 bg-surface px-3 sm:px-5 pb-3 sm:pb-5 pt-3">
           {pendingApproval && pendingApproval.sessionId === sessionId && (
             <div className="mx-auto mb-3 max-w-2xl rounded-xl border border-accent/25 bg-accent-dim/60 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Autorização</p>
@@ -251,7 +251,7 @@ export default function ChatPage() {
               </div>
             </div>
           )}
-          <div className="mx-auto flex max-w-2xl items-end gap-3">
+          <div className="mx-auto flex max-w-2xl items-end gap-2 sm:gap-3">
             <div className="relative flex-1">
               <textarea
                 ref={textareaRef}
@@ -302,7 +302,7 @@ function EmptyState() {
       <img
         src="/Hughie.svg"
         alt="Hughie"
-        className="mb-2 h-52 w-52 object-contain"
+        className="mb-2 h-32 w-32 sm:h-52 sm:w-52 object-contain"
       />
       <h2 className="mb-1.5 text-base font-semibold text-strong">Olá, sou o Hughie</h2>
       <p className="max-w-xs text-sm leading-relaxed text-muted">
