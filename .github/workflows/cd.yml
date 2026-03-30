@@ -100,8 +100,8 @@ jobs:
       - name: Build and push broker image
         uses: docker/build-push-action@v6
         with:
-          context: ./providers/llm-broker
-          file: Dockerfile
+          context: .
+          file: ./providers/llm-broker/Dockerfile.ci
           push: true
           tags: |
             ${{ steps.vars.outputs.image_namespace }}/broker:${{ steps.vars.outputs.image_tag }}
@@ -120,8 +120,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
-          file: Dockerfile
+          context: .
+          file: ./frontend/Dockerfile.ci
           push: true
           tags: |
             ${{ steps.vars.outputs.image_namespace }}/frontend:${{ steps.vars.outputs.image_tag }}
