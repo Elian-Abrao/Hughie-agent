@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 _graph = None
 _pending_chats: dict[str, dict[str, Any]] = {}
 
+# Fan-out pub/sub: each SSE subscriber gets its own asyncio.Queue.
+_session_subscribers: dict[str, list[asyncio.Queue]] = {}
+# Background LangGraph tasks, keyed by session_id.
+_running_tasks: dict[str, asyncio.Task] = {}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -191,30 +196,6 @@ def _build_approval_message(original_message: str, tools_used: list[str]) -> str
     )
 
 
-def _approval_event(
-    *,
-    session_id: str,
-    message: str,
-    approve_label: str,
-    reject_label: str,
-    approve_decision: str,
-    reject_decision: str,
-):
-    return {
-        "event": "approval",
-        "data": json.dumps(
-            {
-                "session_id": session_id,
-                "message": message,
-                "approve_label": approve_label,
-                "reject_label": reject_label,
-                "approve_decision": approve_decision,
-                "reject_decision": reject_decision,
-            }
-        ),
-    }
-
-
 def _extract_candidate_paths(message: str, prefixes: list[str]) -> list[str]:
     paths = re.findall(r"(/[^\s\"'`]+)", message)
     seen: list[str] = []
@@ -247,27 +228,45 @@ def _maybe_build_preflight_approval(message: str, session_id: str) -> dict[str, 
         "message": message,
         "scope_keys": scope_keys,
     }
-    return _approval_event(
-        session_id=session_id,
-        message=(
-            "Para fazer isso direito, Hughie provavelmente vai precisar:\n"
-            + "\n".join(lines)
-            + "\n\nSe você autorizar agora, ele pode seguir nesses diretórios sem te interromper a cada comando."
-        ),
-        approve_label="Autorizar acesso inicial",
-        reject_label="Responder sem acessar",
-        approve_decision="approve",
-        reject_decision="deny",
-    )
+    return {
+        "event": "approval",
+        "data": json.dumps({
+            "session_id": session_id,
+            "message": (
+                "Para fazer isso direito, Hughie provavelmente vai precisar:\n"
+                + "\n".join(lines)
+                + "\n\nSe você autorizar agora, ele pode seguir nesses diretórios sem te interromper a cada comando."
+            ),
+            "approve_label": "Autorizar acesso inicial",
+            "reject_label": "Responder sem acessar",
+            "approve_decision": "approve",
+            "reject_decision": "deny",
+        }),
+    }
 
 
-async def _stream_chat_run(
+async def _publish(session_id: str, event_type: str, data: dict[str, Any]) -> None:
+    """Persist one event to DB and fan-out to all active SSE subscribers."""
+    data_str = json.dumps(data)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO chat_stream_events (session_id, event_type, data) VALUES ($1, $2, $3)",
+            session_id, event_type, data_str,
+        )
+    item = {"event": event_type, "data": data_str}
+    for q in list(_session_subscribers.get(session_id, [])):
+        q.put_nowait(item)
+
+
+async def _run_graph_background(
     *,
-    state: dict[str, Any],
     session_id: str,
+    state: dict[str, Any],
     recursion_limit: int,
     allow_pause: bool,
-):
+) -> None:
+    """Run the LangGraph as a detached background task, publishing all events."""
     prev_node = ""
     step_count = 0
     tools_used: list[str] = []
@@ -297,14 +296,14 @@ async def _stream_chat_run(
                             "tools": list(tools_used),
                             "recursion_limit": recursion_limit,
                         }
-                        yield _approval_event(
-                            session_id=session_id,
-                            message=_build_approval_message(original_message, tools_used),
-                            approve_label="Continuar",
-                            reject_label="Responder agora",
-                            approve_decision="continue",
-                            reject_decision="respond_now",
-                        )
+                        await _publish(session_id, "approval", {
+                            "session_id": session_id,
+                            "message": _build_approval_message(original_message, tools_used),
+                            "approve_label": "Continuar",
+                            "reject_label": "Responder agora",
+                            "approve_decision": "continue",
+                            "reject_decision": "respond_now",
+                        })
                         return
 
                 if (
@@ -313,13 +312,14 @@ async def _stream_chat_run(
                     and chunk.content
                     and not getattr(chunk, "tool_call_chunks", None)
                 ):
-                    yield {"event": "text", "data": json.dumps({"text": chunk.content})}
+                    await _publish(session_id, "text", {"text": chunk.content})
 
                 elif node == "tools":
                     tool_name = getattr(chunk, "name", None)
                     if tool_name:
                         tools_used.append(tool_name)
-                        yield {"event": "tool", "data": json.dumps({"tool": tool_name})}
+                        await _publish(session_id, "tool", {"tool": tool_name})
+
     except ApprovalRequired as approval:
         _pending_chats[session_id] = {
             "type": "tool_confirmation",
@@ -330,55 +330,125 @@ async def _stream_chat_run(
             "reject_label": approval.reject_label,
             "approval_message": approval.message,
         }
-        yield _approval_event(
-            session_id=session_id,
-            message=approval.message,
-            approve_label=approval.approve_label,
-            reject_label=approval.reject_label,
-            approve_decision="approve",
-            reject_decision="deny",
+        await _publish(session_id, "approval", {
+            "session_id": session_id,
+            "message": approval.message,
+            "approve_label": approval.approve_label,
+            "reject_label": approval.reject_label,
+            "approve_decision": "approve",
+            "reject_decision": "deny",
+        })
+
+    except Exception as exc:
+        logger.exception("Erro no background task: %s", exc)
+        await _publish(session_id, "error", {"error": str(exc)})
+
+    finally:
+        _running_tasks.pop(session_id, None)
+        sentinel = None
+        for q in list(_session_subscribers.get(session_id, [])):
+            q.put_nowait(sentinel)
+
+
+async def _start_background_task(
+    session_id: str, state: dict[str, Any], recursion_limit: int, allow_pause: bool
+) -> None:
+    """Start background graph task if none is running for this session."""
+    if session_id not in _running_tasks:
+        task = asyncio.create_task(
+            _run_graph_background(
+                session_id=session_id,
+                state=state,
+                recursion_limit=recursion_limit,
+                allow_pause=allow_pause,
+            )
         )
-        return
+        _running_tasks[session_id] = task
+
+
+async def _make_sse_generator(session_id: str, hwm: int):
+    """
+    Async generator that replays DB events after `hwm`, then streams live events.
+
+    Add the subscriber queue BEFORE calling this so no events are missed.
+    """
+    q: asyncio.Queue = asyncio.Queue()
+    _session_subscribers.setdefault(session_id, []).append(q)
+
+    try:
+        # Replay events persisted to DB since the high-water mark
+        last_replayed_id = hwm
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, event_type, data FROM chat_stream_events"
+                " WHERE session_id = $1 AND id > $2 ORDER BY id",
+                session_id, hwm,
+            )
+        for row in rows:
+            yield {"event": row["event_type"], "data": row["data"]}
+            last_replayed_id = max(last_replayed_id, row["id"])
+
+        # If the task already finished before we started listening, we're done
+        if session_id not in _running_tasks:
+            yield {"event": "done", "data": "{}"}
+            return
+
+        # Stream live events from the queue
+        while True:
+            try:
+                item = await asyncio.wait_for(q.get(), timeout=55)
+            except asyncio.TimeoutError:
+                yield {"event": "ping", "data": "{}"}
+                continue
+            if item is None:
+                yield {"event": "done", "data": "{}"}
+                return
+            yield item
+
+    finally:
+        subs = _session_subscribers.get(session_id, [])
+        if q in subs:
+            subs.remove(q)
 
 
 @app.post("/v1/chat/stream")
 async def chat_stream(req: ChatRequest):
     session_id = req.session_id or str(uuid.uuid4())
-    from hughie.config import get_settings
     settings = get_settings()
 
+    # Persist user message immediately so it survives a dropped connection
+    await conversation_store.save_turn(session_id, "user", req.message)
+
+    # Snapshot the high-water mark so replay only covers this run's events
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT COALESCE(MAX(id), 0) AS hwm FROM chat_stream_events WHERE session_id = $1",
+            session_id,
+        )
+    hwm: int = row["hwm"]
+
+    preflight = _maybe_build_preflight_approval(req.message, session_id)
+
+    if preflight is None and session_id not in _running_tasks:
+        state = {**_build_chat_state(req.message, session_id), "user_message_presaved": True}
+        await _start_background_task(session_id, state, settings.recursion_limit, True)
+
     async def generate():
-        # Confirm session_id first so client can track it
         yield {"event": "session", "data": json.dumps({"session_id": session_id})}
-        preflight = _maybe_build_preflight_approval(req.message, session_id)
         if preflight is not None:
             yield preflight
             yield {"event": "done", "data": "{}"}
             return
-        state = _build_chat_state(req.message, session_id)
-
-        try:
-            async for event in _stream_chat_run(
-                state=state,
-                session_id=session_id,
-                recursion_limit=settings.recursion_limit,
-                allow_pause=True,
-            ):
-                yield event
-
-        except Exception as exc:
-            logger.exception("Erro no stream de chat: %s", exc)
-            yield {"event": "error", "data": json.dumps({"error": str(exc)})}
-
-        yield {"event": "done", "data": "{}"}
+        async for event in _make_sse_generator(session_id, hwm):
+            yield event
 
     return EventSourceResponse(generate())
 
 
 @app.post("/v1/chat/decision/stream")
 async def chat_decision_stream(req: ChatDecisionRequest):
-    from hughie.config import get_settings
-
     settings = get_settings()
     pending = _pending_chats.get(req.session_id)
     if pending is None:
@@ -442,21 +512,21 @@ async def chat_decision_stream(req: ChatDecisionRequest):
         recursion_limit = settings.recursion_limit * 2
         allow_pause = True
 
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT COALESCE(MAX(id), 0) AS hwm FROM chat_stream_events WHERE session_id = $1",
+            req.session_id,
+        )
+    hwm: int = row["hwm"]
+
+    state = {**_build_chat_state(message, req.session_id), "user_message_presaved": True}
+    await _start_background_task(req.session_id, state, recursion_limit, allow_pause)
+
     async def generate():
         yield {"event": "session", "data": json.dumps({"session_id": req.session_id})}
-        try:
-            async for event in _stream_chat_run(
-                state=_build_chat_state(message, req.session_id),
-                session_id=req.session_id,
-                recursion_limit=recursion_limit,
-                allow_pause=allow_pause,
-            ):
-                yield event
-        except Exception as exc:
-            logger.exception("Erro no stream de decisão: %s", exc)
-            yield {"event": "error", "data": json.dumps({"error": str(exc)})}
-
-        yield {"event": "done", "data": "{}"}
+        async for event in _make_sse_generator(req.session_id, hwm):
+            yield event
 
     return EventSourceResponse(generate())
 

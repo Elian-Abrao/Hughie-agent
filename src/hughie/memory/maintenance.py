@@ -163,6 +163,18 @@ async def remove_stale_stubs(older_than_days: int = 7) -> dict[str, int]:
     return {"deleted": deleted, "promoted": promoted}
 
 
+async def _cleanup_stream_events(older_than_hours: int = 24) -> int:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM chat_stream_events WHERE created_at < now() - ($1::int * interval '1 hour')",
+            older_than_hours,
+        )
+    deleted = int(result.split()[-1])
+    logger.info("Cleanup: deleted %d stale stream event(s)", deleted)
+    return deleted
+
+
 async def run_all() -> dict[str, int]:
     logger.info("Maintenance: starting full run")
     try:
@@ -170,6 +182,7 @@ async def run_all() -> dict[str, int]:
         gc = await run_garbage_collection()
         conflict = await run_conflict_resolution()
         stubs = await remove_stale_stubs()
+        await _cleanup_stream_events()
     except Exception:
         logger.exception("Maintenance: full run failed")
         raise
