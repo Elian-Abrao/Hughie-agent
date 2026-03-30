@@ -39,6 +39,19 @@ Fluxo recomendado:
 7. fazer merge na `main`
 8. esperar o `CD` terminar
 
+Proteções atuais da `main`:
+
+- merge por PR habilitado
+- `Backend Tests` obrigatório
+- `Frontend Build` obrigatório
+- histórico linear obrigatório
+- resolução de conversas obrigatória
+
+Observação:
+
+- admins ainda mantêm bypass de emergência
+- isso foi mantido de propósito para recuperar o repositório se o pipeline quebrar
+
 Se estiver trabalhando sozinho e quiser um fluxo direto:
 
 1. fazer a alteração local
