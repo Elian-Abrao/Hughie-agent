@@ -87,10 +87,14 @@ def test_run_all_returns_all_counters(monkeypatch):
     monkeypatch.setattr(maintenance, "run_garbage_collection", AsyncMock(return_value=1))
     monkeypatch.setattr(maintenance, "run_conflict_resolution", AsyncMock(return_value=2))
     exec_mock = AsyncMock()
+    fetch_mock = AsyncMock(return_value=[])
 
     class FakeConn:
         async def execute(self, query, *args):
             await exec_mock(query, *args)
+
+        async def fetch(self, query, *args):
+            return await fetch_mock(query, *args)
 
     class FakeAcquire:
         async def __aenter__(self):
@@ -107,4 +111,10 @@ def test_run_all_returns_all_counters(monkeypatch):
 
     result = asyncio.run(maintenance.run_all())
 
-    assert result == {"decayed": 3, "garbage_collected": 1, "conflicts_resolved": 2}
+    assert result == {
+        "decayed": 3,
+        "garbage_collected": 1,
+        "conflicts_resolved": 2,
+        "stubs_deleted": 0,
+        "stubs_promoted": 0,
+    }
