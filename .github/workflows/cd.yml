@@ -101,7 +101,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./providers/llm-broker
-          file: ./providers/llm-broker/Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ${{ steps.vars.outputs.image_namespace }}/broker:${{ steps.vars.outputs.image_tag }}
@@ -121,7 +121,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
-          file: ./frontend/Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ${{ steps.vars.outputs.image_namespace }}/frontend:${{ steps.vars.outputs.image_tag }}
