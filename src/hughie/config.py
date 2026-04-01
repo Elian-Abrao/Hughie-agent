@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     bridge_model: str = "gpt-5.4"
     bridge_timeout: float = 120.0
     recursion_limit: int = 80
+    context_history_limit: int = 12
+    context_rag_top_k: int = 6
+    context_timeout_seconds: float = 2.5
 
     consolidation_provider: str = "codex"
     consolidation_model: str = "gpt-5.4"

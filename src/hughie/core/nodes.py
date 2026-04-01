@@ -43,6 +43,7 @@ def _get_llm() -> CodexChatModel:
 async def retrieve_context(state: HughieState) -> dict:
     """Load ranked RAG context and conversation history from DB — in parallel."""
     session_id = state["session_id"]
+    settings = get_settings()
     await _emit_progress(state, "context:start", "Buscando histórico recente e memória relevante.")
 
     user_text = ""
@@ -55,14 +56,29 @@ async def retrieve_context(state: HughieState) -> dict:
 
     async def _rag() -> dict:
         if not user_text:
-            return {"context": ""}
-        return await retrieve_context_v2(query=user_text, task_context=task_context, top_k=10)
+            return {"context": "", "results": [], "episodes": []}
+        return await retrieve_context_v2(
+            query=user_text,
+            task_context=task_context,
+            top_k=settings.context_rag_top_k,
+        )
 
-    # RAG search and history fetch are independent — run concurrently
-    rag_payload, turns = await asyncio.gather(
-        _rag(),
-        conversation_store.get_recent(session_id, limit=20),
+    history_task = asyncio.create_task(
+        conversation_store.get_recent(session_id, limit=settings.context_history_limit)
     )
+    rag_task = asyncio.create_task(_rag())
+
+    turns = await history_task
+    try:
+        rag_payload = await asyncio.wait_for(rag_task, timeout=settings.context_timeout_seconds)
+    except asyncio.TimeoutError:
+        rag_task.cancel()
+        rag_payload = {"context": "", "results": [], "episodes": []}
+        await _emit_progress(
+            state,
+            "context:partial",
+            "Memória profunda demorou além do limite. Seguindo com histórico recente para responder mais rápido.",
+        )
     await _emit_progress(
         state,
         "context:loaded",
