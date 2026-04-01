@@ -150,3 +150,38 @@ def test_temporal_weight_refreshed_after_retrieval(monkeypatch):
     asyncio.run(rag.retrieve("modulo x", "contexto modulo x", top_k=5))
 
     refresh_mock.assert_awaited_once_with("n1", target_weight=1.0)
+
+
+def test_retrieve_context_reuses_single_embedding_for_notes_and_episodes(monkeypatch):
+    note = FakeNote(id="n1", title="Modulo X", content="Detalhes do modulo X")
+    embed_calls = {"count": 0}
+
+    def fake_embed_query(text):
+        embed_calls["count"] += 1
+        return [0.0] * 768
+
+    async def fake_semantic_search(query_embedding, top_k):
+        return [
+            {
+                "note": note,
+                "distance": 0.1,
+                "semantic_relevance": 0.9,
+                "origin": "semantic_seed",
+                "hop_distance": 0,
+                "source_note_id": None,
+                "relation_type": None,
+            }
+        ]
+
+    episodes_mock = AsyncMock(return_value=[])
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    monkeypatch.setattr(rag, "semantic_search", fake_semantic_search)
+    monkeypatch.setattr(rag, "expand_by_graph", AsyncMock(return_value=[]))
+    monkeypatch.setattr(rag.brain_store, "refresh_temporal_weight", AsyncMock(return_value=note))
+    monkeypatch.setattr(rag.episode_store, "search_similar_episodes_by_embedding", episodes_mock)
+
+    payload = asyncio.run(rag.retrieve_context_v2("modulo x", "contexto modulo x", top_k=5))
+
+    assert payload["results"][0].note.id == "n1"
+    assert embed_calls["count"] == 1
+    episodes_mock.assert_awaited_once()

@@ -115,6 +115,13 @@ async def create_episode(session_id: str, data: dict[str, Any]) -> Episode:
 
 async def search_similar_episodes(query: str, top_k: int = 5) -> list[Episode]:
     query_embedding = embed_query(query)
+    return await search_similar_episodes_by_embedding(query_embedding, top_k=top_k)
+
+
+async def search_similar_episodes_by_embedding(
+    query_embedding: list[float],
+    top_k: int = 5,
+) -> list[Episode]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(

@@ -91,10 +91,12 @@ async def expand_by_graph(node_ids: list[str], hops: int = GRAPH_HOPS) -> list[d
     seen: set[str] = set(node_ids)
     seeds = {candidate_id: 1.0 for candidate_id in node_ids}
 
-    for seed_id in node_ids:
-        neighbors = await brain_graph.get_neighbors(seed_id, hops=hops)
-        outgoing = await link_store.get_links_for_notes([seed_id], limit=200)
-        incoming = await link_store.get_backlinks_for_notes([seed_id], limit=200)
+    async def _expand_seed(seed_id: str) -> list[dict[str, Any]]:
+        neighbors, outgoing, incoming = await asyncio.gather(
+            brain_graph.get_neighbors(seed_id, hops=hops),
+            link_store.get_links_for_notes([seed_id], limit=200),
+            link_store.get_backlinks_for_notes([seed_id], limit=200),
+        )
         link_map: dict[str, tuple[str | None, float, int]] = {}
 
         for link in outgoing:
@@ -111,16 +113,14 @@ async def expand_by_graph(node_ids: list[str], hops: int = GRAPH_HOPS) -> list[d
                 1,
             )
 
+        seed_results: list[dict[str, Any]] = []
         for neighbor in neighbors:
-            if neighbor.id in seen:
-                continue
-            seen.add(neighbor.id)
             relation_type, link_confidence, hop_distance = link_map.get(
                 neighbor.id,
                 ("related_to", 0.6, min(hops, 2)),
             )
             semantic_relevance = max(0.05, seeds.get(seed_id, 0.5) * link_confidence * (0.9**hop_distance))
-            expanded.append(
+            seed_results.append(
                 {
                     "note": neighbor,
                     "distance": None,
@@ -131,6 +131,15 @@ async def expand_by_graph(node_ids: list[str], hops: int = GRAPH_HOPS) -> list[d
                     "relation_type": relation_type,
                 }
             )
+        return seed_results
+
+    for candidates in await asyncio.gather(*[_expand_seed(seed_id) for seed_id in node_ids]):
+        for candidate in candidates:
+            note_id = candidate["note"].id
+            if note_id in seen:
+                continue
+            seen.add(note_id)
+            expanded.append(candidate)
 
     logger.info("RAG graph expansion returned %d neighbor note(s)", len(expanded))
     return expanded
@@ -170,6 +179,16 @@ async def retrieve(query: str, task_context: str, top_k: int = 10) -> list[RAGRe
         return []
 
     query_embedding = embed_query(search_text)
+    return await retrieve_from_embedding(query_embedding, task_context=task_context, top_k=top_k, query=query)
+
+
+async def retrieve_from_embedding(
+    query_embedding: list[float],
+    *,
+    task_context: str,
+    top_k: int = 10,
+    query: str = "",
+) -> list[RAGResult]:
     seeds = await semantic_search(query_embedding, top_k=max(top_k, 5))
     seed_ids = [candidate["note"].id for candidate in seeds]
     expanded = await expand_by_graph(seed_ids, hops=GRAPH_HOPS) if seed_ids else []
@@ -217,8 +236,15 @@ def format_context(
 
 
 async def retrieve_context_v2(query: str, task_context: str, top_k: int = 10) -> dict[str, Any]:
-    ranked = await retrieve(query=query, task_context=task_context, top_k=top_k)
-    episodes = await episode_store.search_similar_episodes(query or task_context, top_k=3)
+    search_text = "\n".join(part for part in [query.strip(), task_context.strip()] if part.strip())
+    if not search_text:
+        return {"results": [], "episodes": [], "context": ""}
+
+    query_embedding = embed_query(search_text)
+    ranked, episodes = await asyncio.gather(
+        retrieve_from_embedding(query_embedding, task_context=task_context, top_k=top_k, query=query),
+        episode_store.search_similar_episodes_by_embedding(query_embedding, top_k=3),
+    )
     return {
         "results": ranked,
         "episodes": episodes,
