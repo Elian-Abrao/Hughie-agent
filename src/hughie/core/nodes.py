@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -12,6 +13,18 @@ from hughie.prompts import load as load_prompt
 from hughie.tools.brain_tools import BRAIN_TOOLS
 
 _llm: CodexChatModel | None = None
+ProgressCallback = Callable[[str, str], Awaitable[None]]
+
+
+async def _emit_progress(state: HughieState, stage: str, message: str) -> None:
+    callback = state.get("progress_callback")
+    if callback is None:
+        return
+    try:
+        await callback(stage, message)
+    except Exception:
+        # Progresso não deve quebrar o fluxo principal do agente.
+        return
 
 
 def init_llm(tools: list) -> None:
@@ -30,6 +43,7 @@ def _get_llm() -> CodexChatModel:
 async def retrieve_context(state: HughieState) -> dict:
     """Load ranked RAG context and conversation history from DB — in parallel."""
     session_id = state["session_id"]
+    await _emit_progress(state, "context:start", "Buscando histórico recente e memória relevante.")
 
     user_text = ""
     for msg in reversed(state["messages"]):
@@ -48,6 +62,14 @@ async def retrieve_context(state: HughieState) -> dict:
     rag_payload, turns = await asyncio.gather(
         _rag(),
         conversation_store.get_recent(session_id, limit=20),
+    )
+    await _emit_progress(
+        state,
+        "context:loaded",
+        (
+            f"Contexto carregado: {len(turns)} mensagem(ns) recentes, "
+            f"{len(rag_payload.get('results', []))} nota(s) e {len(rag_payload.get('episodes', []))} episódio(s)."
+        ),
     )
 
     brain_context = rag_payload["context"]
@@ -68,6 +90,7 @@ async def chat(state: HughieState) -> dict:
     """Call the LLM with full ordered context."""
     settings = get_settings()
     llm = _get_llm()
+    await _emit_progress(state, "model:start", "Consultando o modelo com o contexto consolidado.")
 
     system_content = settings.system_prompt or load_prompt("system")
     if state.get("brain_context"):
@@ -82,11 +105,13 @@ async def chat(state: HughieState) -> dict:
     )
 
     response = await llm.ainvoke(full_messages)
+    await _emit_progress(state, "model:done", "Resposta inicial do modelo recebida.")
     return {"messages": [response]}
 
 
 async def save_memory(state: HughieState) -> dict:
     """Persist user message and assistant response to DB."""
+    await _emit_progress(state, "memory:save", "Salvando a conversa e agendando atualização de memória.")
     session_id = state["session_id"]
     messages = state["messages"]
 
@@ -126,5 +151,6 @@ async def save_memory(state: HughieState) -> dict:
 
     # Fire consolidation in background — does not block the response
     asyncio.create_task(maybe_consolidate(session_id))
+    await _emit_progress(state, "memory:queued", "Conversa salva. Consolidação de memória ficou em background.")
 
     return {}

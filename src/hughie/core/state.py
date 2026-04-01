@@ -9,3 +9,4 @@ class HughieState(TypedDict):
     session_id: str
     brain_context: str
     user_message_presaved: NotRequired[bool]  # True quando endpoint já salvou a msg do user
+    progress_callback: NotRequired[object]    # callback async opcional para publicar progresso

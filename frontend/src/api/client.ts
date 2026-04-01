@@ -55,6 +55,7 @@ export interface SessionMessage {
 
 export type StreamEvent =
   | { event: "session"; data: { session_id: string } }
+  | { event: "progress"; data: { stage: string; message: string } }
   | { event: "text"; data: { text: string } }
   | { event: "tool"; data: { tool: string } }
   | {

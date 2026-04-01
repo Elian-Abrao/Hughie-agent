@@ -22,14 +22,18 @@ const TOOL_LABELS: Record<string, string> = {
   ssh_exec: "Executando no servidor…",
   read_file: "Lendo arquivo…",
   write_file: "Escrevendo arquivo…",
-  list_directory: "Listando diretório…",
-  search_files: "Procurando arquivos…",
+  list_dir: "Listando diretório…",
+  find_files: "Procurando arquivos…",
   web_search: "Pesquisando na web…",
-  web_fetch: "Carregando página…",
 };
 
 function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? `${name}…`;
+}
+
+function appendUniqueActivity(msg: Message, activity: string): Message {
+  if (!activity.trim() || msg.activity.includes(activity)) return msg;
+  return { ...msg, activity: [...msg.activity, activity] };
 }
 
 export default function ChatPage() {
@@ -94,6 +98,8 @@ export default function ChatPage() {
         if (ev.event === "session" && !sessionIdRef.current) {
           sessionIdRef.current = ev.data.session_id;
           setSessionId(ev.data.session_id);
+        } else if (ev.event === "progress") {
+          updateMessage(assistantId, (msg) => appendUniqueActivity(msg, ev.data.message));
         } else if (ev.event === "text") {
           updateMessage(assistantId, (msg) => ({
             ...msg,
@@ -103,11 +109,10 @@ export default function ChatPage() {
               : [...msg.activity, "Gerando resposta."],
           }));
         } else if (ev.event === "tool") {
-          updateMessage(assistantId, (msg) => ({
-            ...msg,
-            tools: [...msg.tools, ev.data.tool],
-            activity: [...msg.activity, toolLabel(ev.data.tool)],
-          }));
+          updateMessage(assistantId, (msg) => {
+            const next = msg.tools.includes(ev.data.tool) ? msg : { ...msg, tools: [...msg.tools, ev.data.tool] };
+            return appendUniqueActivity(next, toolLabel(ev.data.tool));
+          });
         } else if (ev.event === "approval") {
           setPendingApproval({
             assistantId,
@@ -178,7 +183,9 @@ export default function ChatPage() {
 
     try {
       for await (const ev of streamChatDecision(pendingApproval.sessionId, decision, ctrl.signal)) {
-        if (ev.event === "text") {
+        if (ev.event === "progress") {
+          updateMessage(pendingApproval.assistantId, (msg) => appendUniqueActivity(msg, ev.data.message));
+        } else if (ev.event === "text") {
           updateMessage(pendingApproval.assistantId, (msg) => ({
             ...msg,
             content: msg.content + ev.data.text,
@@ -187,11 +194,10 @@ export default function ChatPage() {
               : [...msg.activity, "Gerando resposta."],
           }));
         } else if (ev.event === "tool") {
-          updateMessage(pendingApproval.assistantId, (msg) => ({
-            ...msg,
-            tools: [...msg.tools, ev.data.tool],
-            activity: [...msg.activity, toolLabel(ev.data.tool)],
-          }));
+          updateMessage(pendingApproval.assistantId, (msg) => {
+            const next = msg.tools.includes(ev.data.tool) ? msg : { ...msg, tools: [...msg.tools, ev.data.tool] };
+            return appendUniqueActivity(next, toolLabel(ev.data.tool));
+          });
         } else if (ev.event === "approval") {
           setPendingApproval({
             assistantId: pendingApproval.assistantId,

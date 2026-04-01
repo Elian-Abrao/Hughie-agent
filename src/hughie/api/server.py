@@ -187,6 +187,10 @@ def _build_chat_state(message: str, session_id: str) -> dict[str, Any]:
     }
 
 
+async def _publish_progress(session_id: str, stage: str, message: str) -> None:
+    await _publish(session_id, "progress", {"stage": stage, "message": message})
+
+
 def _build_approval_message(original_message: str, tools_used: list[str]) -> str:
     tool_summary = ", ".join(tools_used[-4:]) if tools_used else "fazer mais navegação e leitura"
     return (
@@ -278,6 +282,7 @@ async def _run_graph_background(
             break
 
     try:
+        await _publish_progress(session_id, "run:start", "Iniciando pipeline do Hughie.")
         with approval_context(session_id=session_id, mode="web"):
             async for chunk, metadata in _graph.astream(
                 state,
@@ -288,6 +293,14 @@ async def _run_graph_background(
                 if node and node != prev_node:
                     prev_node = node
                     step_count += 1
+                    stage_messages = {
+                        "retrieve_context": "Recuperando histórico e memória semântica.",
+                        "chat": "Gerando resposta com o contexto disponível.",
+                        "tools": "Executando ferramentas para avançar na resposta.",
+                        "save_memory": "Persistindo a conversa e preparando a memória.",
+                    }
+                    if node in stage_messages:
+                        await _publish_progress(session_id, f"node:{node}", stage_messages[node])
 
                     if allow_pause and node == "tools" and step_count >= approval_threshold:
                         _pending_chats[session_id] = {
@@ -344,6 +357,7 @@ async def _run_graph_background(
         await _publish(session_id, "error", {"error": str(exc)})
 
     finally:
+        await _publish_progress(session_id, "run:done", "Execução desta rodada concluída.")
         _running_tasks.pop(session_id, None)
         sentinel = None
         for q in list(_session_subscribers.get(session_id, [])):
@@ -432,7 +446,12 @@ async def chat_stream(req: ChatRequest):
     preflight = _maybe_build_preflight_approval(req.message, session_id)
 
     if preflight is None and session_id not in _running_tasks:
-        state = {**_build_chat_state(req.message, session_id), "user_message_presaved": True}
+        await _publish_progress(session_id, "request:accepted", "Mensagem recebida. Preparando sessão e contexto.")
+        state = {
+            **_build_chat_state(req.message, session_id),
+            "user_message_presaved": True,
+            "progress_callback": lambda stage, message: _publish_progress(session_id, stage, message),
+        }
         await _start_background_task(session_id, state, settings.recursion_limit, True)
 
     async def generate():
@@ -520,7 +539,12 @@ async def chat_decision_stream(req: ChatDecisionRequest):
         )
     hwm: int = row["hwm"]
 
-    state = {**_build_chat_state(message, req.session_id), "user_message_presaved": True}
+    await _publish_progress(req.session_id, "decision:resume", "Retomando execução com base na sua decisão.")
+    state = {
+        **_build_chat_state(message, req.session_id),
+        "user_message_presaved": True,
+        "progress_callback": lambda stage, message: _publish_progress(req.session_id, stage, message),
+    }
     await _start_background_task(req.session_id, state, recursion_limit, allow_pause)
 
     async def generate():
