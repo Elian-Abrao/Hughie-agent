@@ -29,6 +29,9 @@ class Settings(BaseSettings):
 
     local_machine_host: str = "tree-dev"
     local_machine_path_prefixes: list[str] = ["/home/elian/", "/dados/"]
+    host_agent_url: str = ""
+    host_agent_token: str = ""
+    host_agent_timeout: float = 10.0
 
     system_prompt: str = Field(
         default="",

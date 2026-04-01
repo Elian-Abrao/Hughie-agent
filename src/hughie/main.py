@@ -10,8 +10,10 @@ from rich.table import Table
 app = typer.Typer(help="Hughie — seu agente pessoal", no_args_is_help=True)
 brain_app = typer.Typer(help="Gerenciar brain notes")
 db_app = typer.Typer(help="Comandos de banco de dados")
+host_agent_app = typer.Typer(help="Serviço persistente para acesso rápido ao host principal")
 app.add_typer(brain_app, name="brain")
 app.add_typer(db_app, name="db")
+app.add_typer(host_agent_app, name="host-agent")
 
 console = Console()
 
@@ -239,6 +241,25 @@ def config():
     table.add_row("bridge_url", s.bridge_url)
     table.add_row("bridge_model", s.bridge_model)
     table.add_row("bridge_timeout", str(s.bridge_timeout))
+    table.add_row("host_agent_url", s.host_agent_url or "[dim]não configurado[/dim]")
     table.add_row("google_api_key", "***" if s.google_api_key else "[red]não configurado[/red]")
 
     console.print(table)
+
+
+@host_agent_app.command("serve")
+def host_agent_serve(
+    host: str = typer.Option("127.0.0.1", "--host", help="Endereço de bind"),
+    port: int = typer.Option(8787, "--port", help="Porta"),
+):
+    """Iniciar o host-agent persistente para acesso rápido ao sistema local."""
+    import uvicorn
+
+    console.print(f"[dim]Iniciando Hughie host-agent em http://{host}:{port}[/dim]")
+    uvicorn.run(
+        "hughie.host_agent.server:app",
+        host=host,
+        port=port,
+        reload=False,
+        log_level="info",
+    )

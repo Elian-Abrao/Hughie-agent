@@ -4,6 +4,8 @@ import re
 import shlex
 from pathlib import Path
 
+from hughie.host_agent.client import get_host_agent_client, should_use_host_agent
+
 logger = logging.getLogger(__name__)
 
 # Matches absolute paths to files or directories.
@@ -64,6 +66,14 @@ async def classify_paths_ssh_batch(host: str, paths: list[str]) -> dict[str, str
     """
     if not paths:
         return {}
+
+    if should_use_host_agent(host):
+        client = get_host_agent_client()
+        if client and await asyncio.to_thread(client.health):
+            try:
+                return await asyncio.to_thread(client.classify_paths, paths)
+            except Exception as exc:
+                logger.warning("Host-agent path check failed for %s: %s", host, exc)
 
     # Build one bash command that checks every path and prints "path:kind"
     checks = "; ".join(

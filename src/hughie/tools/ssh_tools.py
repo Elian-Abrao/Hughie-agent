@@ -10,6 +10,7 @@ import re
 import shlex
 from langchain_core.tools import tool
 from hughie.approvals import confirm_or_raise
+from hughie.host_agent.client import get_host_agent_client, should_use_host_agent
 
 _READ_ONLY = frozenset([
     "ls", "ll", "la", "cat", "head", "tail", "less", "more",
@@ -143,6 +144,10 @@ async def ssh_exec(host: str, command: str, working_dir: str = "") -> str:
         if not confirmed:
             return "Comando cancelado pelo usuário."
 
+    if should_use_host_agent(host):
+        client = get_host_agent_client()
+        if client and await asyncio.to_thread(client.health):
+            return await asyncio.to_thread(client.exec, command, working_dir)
     return await _run(host, full_command)
 
 
@@ -154,6 +159,10 @@ async def ssh_read_file(host: str, path: str) -> str:
         host: SSH host alias or user@hostname
         path: Absolute path to the file on the remote host
     """
+    if should_use_host_agent(host):
+        client = get_host_agent_client()
+        if client and await asyncio.to_thread(client.health):
+            return await asyncio.to_thread(client.read_file, path)
     return await _run(host, f"cat {shlex.quote(path)}")
 
 
@@ -180,6 +189,11 @@ async def ssh_write_file(host: str, path: str, content: str) -> str:
     )
     if not confirmed:
         return "Cancelado pelo usuário."
+
+    if should_use_host_agent(host):
+        client = get_host_agent_client()
+        if client and await asyncio.to_thread(client.health):
+            return await asyncio.to_thread(client.write_file, path, content)
 
     # Write via stdin piped into `cat > path` — handles any content safely
     cmd = _ssh_base(host) + [f"cat > {shlex.quote(path)}"]
@@ -213,6 +227,10 @@ async def ssh_list_dir(host: str, path: str, hidden: bool = False) -> str:
         path: Absolute path to the directory
         hidden: Include hidden files (default False)
     """
+    if should_use_host_agent(host):
+        client = get_host_agent_client()
+        if client and await asyncio.to_thread(client.health):
+            return await asyncio.to_thread(client.list_dir, path, hidden)
     flag = "-la" if hidden else "-l"
     return await _run(host, f"ls {flag} {shlex.quote(path)}")
 
